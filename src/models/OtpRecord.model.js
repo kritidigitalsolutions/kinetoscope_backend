@@ -26,7 +26,7 @@ const otpRecordSchema = new mongoose.Schema(
     purpose: {
       type: String,
       required: true,
-      enum: ['change-email', 'change-password'],
+      enum: ['change-email', 'change-password', 'login-2fa'],
       immutable: true,
     },
     // Hashed OTP value — never stored in plaintext

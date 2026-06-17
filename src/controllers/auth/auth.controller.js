@@ -1,4 +1,5 @@
 const User = require('../../models/User.model');
+const OtpRecord = require('../../models/OtpRecord.model');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 const { signToken, getCookieOptions } = require('../../utils/helpers');
@@ -71,17 +72,29 @@ const login = asyncHandler(async (req, res, next) => {
 
   // 4) Check if 2FA (OTP Verification) is enabled
   if (user.is2FAEnabled) {
-    // Generate a secure 6-digit OTP
+    // 1) Invalidate any existing login-2fa OTPs for this user
+    await OtpRecord.deleteMany({ userId: user._id, purpose: 'login-2fa' });
+
+    // 2) Generate a secure 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Set OTP and Expiry (Valid for 10 minutes)
-    user.otpCode = otp;
-    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-    await user.save({ validateBeforeSave: false });
+    // 3) Hash OTP before storing
+    const otpHash = await OtpRecord.hashOtp(otp);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Send OTP to the user's email address stored in MongoDB
+    // 4) Create OtpRecord
+    await OtpRecord.create({
+      userId: user._id,
+      currentEmail: user.email,
+      purpose: 'login-2fa',
+      otpHash,
+      expiresAt,
+      lastSentAt: new Date(),
+    });
+
+    // 5) Send OTP to the user's email address stored in MongoDB
     await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+      from: process.env.EMAIL_USER || process.env.SMTP_FROM || 'noreply@krossfilmproductions.com',
       to: user.email,
       subject: 'Your Kinetoscope Login OTP',
       html: `
@@ -132,29 +145,38 @@ const login = asyncHandler(async (req, res, next) => {
 const verify2FA = asyncHandler(async (req, res, next) => {
   const { email, otp } = req.body;
 
-  // 1) Find user by email and select the otpCode and otpExpiry fields
-  const user = await User.findOne({ email }).select('+otpCode +otpExpiry');
+  // 1) Find user by email
+  const user = await User.findOne({ email });
   if (!user) {
     return next(new AppError('Authentication failed. User not found.', 401));
   }
 
-  // 2) Check if OTP exists and is correct
-  if (!user.otpCode || user.otpCode !== otp) {
+  // 2) Find active OTP record for login-2fa purpose
+  const otpRecord = await OtpRecord.findOne({
+    userId: user._id,
+    purpose: 'login-2fa',
+    isUsed: false,
+    expiresAt: { $gt: new Date() },
+  }).select('+otpHash');
+
+  if (!otpRecord) {
+    return next(new AppError('No valid OTP found. Please request a new OTP.', 400));
+  }
+
+  // 3) Verify OTP hash using bcrypt
+  const isMatch = await otpRecord.verifyOtp(otp);
+  if (!isMatch) {
     return next(new AppError('Invalid OTP code. Please check and try again.', 401));
   }
 
-  // 3) Check if OTP has expired
-  if (new Date() > user.otpExpiry) {
-    return next(new AppError('OTP has expired. Please request a new code.', 401));
-  }
+  // 4) Invalidate OTP record immediately (single-use enforcement)
+  await OtpRecord.deleteMany({ userId: user._id, purpose: 'login-2fa' });
 
-  // 4) OTP is valid: Clear the OTP fields
-  user.otpCode = undefined;
-  user.otpExpiry = undefined;
+  // 5) Update user lastLogin
   user.lastLogin = new Date();
   await user.save({ validateBeforeSave: false });
 
-  // 5) Sign JWT and set cookie
+  // 6) Sign JWT and set cookie
   const token = signToken(user._id, user.role);
   const cookieOptions = getCookieOptions();
   res.cookie('jwt', token, cookieOptions);

@@ -49,14 +49,7 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-    otpCode: {
-      type: String,
-      select: false,
-    },
-    otpExpiry: {
-      type: Date,
-      select: false,
-    },
+
   },
   {
     timestamps: true, // Automatically manages createdAt and updatedAt fields
