@@ -3,6 +3,7 @@ const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 const { signToken, getCookieOptions } = require('../../utils/helpers');
 const { ROLES } = require('../../constants/roles');
+const transporter = require('../../config/mailer');
 
 /**
  * One-time Super Admin Setup
@@ -72,29 +73,36 @@ const login = asyncHandler(async (req, res, next) => {
   if (user.is2FAEnabled) {
     // Generate a secure 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     // Set OTP and Expiry (Valid for 10 minutes)
     user.otpCode = otp;
     user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
     await user.save({ validateBeforeSave: false });
 
-    // Print OTP to console for debugging/delivery validation
-    console.log(`\n========================================`);
-    console.log(`[2FA OTP] Code for ${user.email} is: ${otp}`);
-    console.log(`========================================\n`);
+    // Send OTP to the user's email address stored in MongoDB
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: user.email,
+      subject: 'Your Kinetoscope Login OTP',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+          <h2 style="color: #1a1a2e;">Login Verification Code</h2>
+          <p>Hello ${user.name},</p>
+          <p>Your one-time password (OTP) for logging into the Kinetoscope Super Admin dashboard is:</p>
+          <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #e94560; margin: 24px 0;">${otp}</div>
+          <p>This code is valid for <strong>10 minutes</strong>. Do not share it with anyone.</p>
+          <p style="color: #888; font-size: 12px;">If you did not attempt to log in, please ignore this email.</p>
+        </div>
+      `,
+    });
 
-    // In development mode, return the OTP directly in JSON response for easy Postman testing
-    const responsePayload = {
+    console.log(`[2FA OTP] Code sent to ${user.email}`);
+
+    return res.status(200).json({
       success: true,
-      message: 'OTP sent successfully',
+      message: 'OTP sent to your registered email address.',
       requires2FA: true,
-    };
-
-    if (process.env.NODE_ENV === 'development') {
-      responsePayload.devOtp = otp;
-    }
-
-    return res.status(200).json(responsePayload);
+    });
   }
 
   // 5) Regular login without 2FA: sign token and update lastLogin

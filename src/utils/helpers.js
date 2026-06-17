@@ -37,14 +37,10 @@ const getCookieOptions = () => {
     expires: new Date(
       Date.now() + parseInt(process.env.JWT_COOKIE_EXPIRE || '30', 10) * 24 * 60 * 60 * 1000
     ),
-    httpOnly: true, // Prevents client-side scripts from reading the cookie (mitigates XSS)
+    httpOnly: true,   // Prevents client-side scripts from reading the cookie (mitigates XSS)
+    secure: true,     // Always serve cookie over HTTPS only
+    sameSite: 'none', // Enables cross-site requests (necessary for separate frontend-backend hosting)
   };
-
-  // Secure and SameSite flags for Production environment
-  if (process.env.NODE_ENV === 'production') {
-    cookieOptions.secure = true; // Serves cookie only over HTTPS
-    cookieOptions.sameSite = 'none'; // Enables cross-site requests (necessary for separate frontend-backend hosting)
-  }
 
   return cookieOptions;
 };
