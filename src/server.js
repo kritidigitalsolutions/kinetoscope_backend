@@ -22,7 +22,7 @@ socketService.init(server);
 
 // Start server
 const activeServer = server.listen(port, () => {
-  console.log(`KFPL server running in ${process.env.NODE_ENV || 'development'} mode on port ${port}...`);
+  console.log(`KFPL server running on port ${port}...`);
 }); // Trigger reload
 module.exports = server;
 

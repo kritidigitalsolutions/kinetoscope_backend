@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const AppError = require('./utils/AppError');
 const globalErrorHandler = require('./middlewares/error.middleware');
@@ -11,10 +10,6 @@ const app = express();
 // Set security HTTP headers
 app.use(helmet());
 
-// Development logging
-if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev'));
-}
 
 // Enable CORS
 const allowedOrigins = [
@@ -25,7 +20,7 @@ const allowedOrigins = [
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps, curl, postman) or matching allowedOrigins
-    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -49,6 +44,14 @@ app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'success',
     message: 'KFPL API Server is healthy and running.'
+  });
+});
+
+
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'Welcome to the Kinetoscope API!'
   });
 });
 
