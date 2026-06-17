@@ -79,16 +79,10 @@ const sendChangePasswordOtpHandler = asyncHandler(async (req, res, next) => {
   // 9) Send OTP to current email
   await sendChangePasswordOtp(user.email, otp);
 
-  const responsePayload = {
+  res.status(200).json({
     success: true,
     message: 'OTP sent successfully to your email address. Verify to confirm the password change.',
-  };
-
-  if (process.env.NODE_ENV === 'development') {
-    responsePayload.devOtp = otp;
-  }
-
-  res.status(200).json(responsePayload);
+  });
 });
 
 /**

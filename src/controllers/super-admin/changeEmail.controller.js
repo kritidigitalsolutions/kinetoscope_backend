@@ -66,16 +66,10 @@ const sendChangeEmailOtpHandler = asyncHandler(async (req, res, next) => {
   // 7) Send OTP email
   await sendChangeEmailOtp(currentEmail, otp, newEmail);
 
-  const responsePayload = {
+  res.status(200).json({
     success: true,
     message: 'OTP sent successfully to your current email address. Valid for 5 minutes.',
-  };
-
-  if (process.env.NODE_ENV === 'development') {
-    responsePayload.devOtp = otp;
-  }
-
-  res.status(200).json(responsePayload);
+  });
 });
 
 /**
