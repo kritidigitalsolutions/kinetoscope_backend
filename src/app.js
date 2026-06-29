@@ -14,6 +14,7 @@ app.use(helmet());
 // Enable CORS
 const allowedOrigins = [
   'http://localhost:5173',
+  'https://kinetoscope-superadmin.seven.vercel.app',
   'https://kinetoscope-superadmin-seven.vercel.app',
   process.env.FRONTEND_URL
 ].filter(Boolean);
@@ -21,7 +22,7 @@ const allowedOrigins = [
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps, curl, postman) or matching allowedOrigins
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development' || origin.includes('postman') || origin.startsWith('chrome-extension://')) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
