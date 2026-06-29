@@ -4,7 +4,7 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const AppError = require('./utils/AppError');
 const globalErrorHandler = require('./middlewares/error.middleware');
-const rootRouter = require('../index');
+const rootRouter = require('./routes');
 const app = express();
 
 // Set security HTTP headers

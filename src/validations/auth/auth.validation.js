@@ -1,5 +1,5 @@
 const { body, validationResult } = require('express-validator');
-const AppError = require('../utils/AppError');
+const AppError = require('../../utils/AppError');
 
 /**
  * Common middleware to compile express-validator errors and trigger centralized error handling.

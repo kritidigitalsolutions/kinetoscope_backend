@@ -1,5 +1,5 @@
 const { body, validationResult } = require('express-validator');
-const AppError = require('../utils/AppError');
+const AppError = require('../../utils/AppError');
 
 /**
  * Common middleware to compile express-validator errors and forward to global error handler.
@@ -15,28 +15,26 @@ const validate = (req, res, next) => {
 };
 
 /**
- * Validation rules for Send OTP (change email initiation)
+ * Validation rules for Send OTP (change password initiation)
  */
-const sendChangeEmailOtpRules = [
-  body('currentEmail')
-    .trim()
-    .notEmpty().withMessage('Current email is required')
-    .isEmail().withMessage('Current email must be a valid email address')
-    .normalizeEmail(),
+const sendChangePasswordOtpRules = [
+  body('currentPassword')
+    .notEmpty().withMessage('Current password is required'),
 
-  body('newEmail')
-    .trim()
-    .notEmpty().withMessage('New email is required')
-    .isEmail().withMessage('New email must be a valid email address')
-    .normalizeEmail(),
+  body('newPassword')
+    .notEmpty().withMessage('New password is required')
+    .isLength({ min: 8 }).withMessage('New password must be at least 8 characters long'),
+
+  body('confirmPassword')
+    .notEmpty().withMessage('Confirm password is required'),
 
   validate,
 ];
 
 /**
- * Validation rules for OTP Verification
+ * Validation rules for Password OTP Verification
  */
-const verifyChangeEmailOtpRules = [
+const verifyChangePasswordOtpRules = [
   body('otp')
     .trim()
     .notEmpty().withMessage('OTP is required')
@@ -47,6 +45,6 @@ const verifyChangeEmailOtpRules = [
 ];
 
 module.exports = {
-  sendChangeEmailOtpRules,
-  verifyChangeEmailOtpRules,
+  sendChangePasswordOtpRules,
+  verifyChangePasswordOtpRules,
 };

@@ -8,7 +8,7 @@ const {
 } = require('../../controllers/super-admin/investment.controller');
 const {
   createInvestmentValidationRules,
-} = require('../../validations/investment.validation');
+} = require('../../validations/super-admin/investment.validation');
 const {
   getSettings,
   toggle2FA,
@@ -16,19 +16,70 @@ const {
 const {
   sendChangeEmailOtpHandler,
   verifyChangeEmailOtp,
-} = require('../../controllers/super-admin/changeEmail.controller');
+} = require('../../controllers/super-admin/change-email.controller');
 const {
   sendChangePasswordOtpHandler,
   verifyChangePasswordOtp,
-} = require('../../controllers/super-admin/changePassword.controller');
+} = require('../../controllers/super-admin/change-password.controller');
 const {
   sendChangeEmailOtpRules,
   verifyChangeEmailOtpRules,
-} = require('../../validations/changeEmail.validation');
+} = require('../../validations/super-admin/change-email.validation');
 const {
   sendChangePasswordOtpRules,
   verifyChangePasswordOtpRules,
-} = require('../../validations/changePassword.validation');
+} = require('../../validations/super-admin/change-password.validation');
+
+// Client management controllers and validations
+const {
+  createClient,
+  getAllClients,
+  getClientById,
+  updateClient,
+  deleteClient,
+  previewClientDashboard,
+  getAllAgents,
+} = require('../../controllers/super-admin/client-management.controller');
+
+const {
+  getManageClients,
+  exportClientsCSV,
+} = require('../../controllers/super-admin/client-reporting.controller');
+
+const {
+  getClientInvestmentsTab,
+  getClientRoiTab,
+  markRoiPaid,
+  getClientDocumentsTab,
+  getClientPerksTab,
+} = require('../../controllers/super-admin/client-financials.controller');
+
+const {
+  createClientValidationRules,
+  updateClientRulesByAdmin,
+} = require('../../validations/client/client.validation');
+
+// Client portal management controllers and validations
+const {
+  listClientAccounts,
+  getClientAccountDetails,
+  updateClientStatus,
+} = require('../../controllers/super-admin/client-portal.controller');
+
+const {
+  updateClientStatusRules,
+} = require('../../validations/super-admin/client-portal.validation');
+
+const upload = require('../../middlewares/upload.middleware');
+
+// Configure Multer field parsing for client onboarding documents
+const clientOnboardingUpload = upload.fields([
+  { name: 'panDocument', maxCount: 1 },
+  { name: 'aadhaarDocument', maxCount: 1 },
+  { name: 'bankProofDocument', maxCount: 1 },
+  { name: 'agreementDocument', maxCount: 1 },
+  { name: 'nomineeProofDocument', maxCount: 1 },
+]);
 
 const router = express.Router();
 
@@ -41,10 +92,27 @@ router.get('/dashboard/analytics', (req, res) => {
   res.status(200).json({ status: 'success', message: 'Dashboard Analytics placeholder' });
 });
 
-// 2. Investor Management
-router.route('/investors')
-  .get((req, res) => res.status(200).json({ status: 'success', message: 'List Investors placeholder' }))
-  .post((req, res) => res.status(201).json({ status: 'success', message: 'Create Investor placeholder' }));
+// 2. Client / Investor Management
+router.route('/clients')
+  .get(getAllClients)
+  .post(clientOnboardingUpload, createClientValidationRules, createClient);
+
+router.get('/clients/manage', getManageClients);
+router.get('/clients/manage/export', exportClientsCSV);
+
+router.route('/clients/:id')
+  .get(getClientById)
+  .patch(clientOnboardingUpload, updateClientRulesByAdmin, updateClient)
+  .delete(deleteClient);
+
+router.get('/clients/:id/investments', getClientInvestmentsTab);
+router.get('/clients/:id/roi', getClientRoiTab);
+router.patch('/clients/:id/roi/:payoutId/pay', markRoiPaid);
+router.get('/clients/:id/documents', getClientDocumentsTab);
+router.get('/clients/:id/perks', getClientPerksTab);
+
+// Client dashboard preview
+router.get('/client-dashboard/:clientId', previewClientDashboard);
 
 // 3. Investment Management — Read-only after assignment (immutable financial records)
 router.route('/investments')
@@ -61,7 +129,7 @@ router.route('/roi')
 
 // 5. Agent Management
 router.route('/agents')
-  .get((req, res) => res.status(200).json({ status: 'success', message: 'List Agents placeholder' }))
+  .get(getAllAgents)
   .post((req, res) => res.status(201).json({ status: 'success', message: 'Create Agent placeholder' }));
 
 // 6. Deposit & Withdrawal Approvals
@@ -97,5 +165,10 @@ router.post('/settings/change-email/verify-otp', verifyChangeEmailOtpRules, veri
 // 12. Settings — Change Password (OTP-based)
 router.post('/settings/change-password/send-otp', sendChangePasswordOtpRules, sendChangePasswordOtpHandler);
 router.post('/settings/change-password/verify-otp', verifyChangePasswordOtpRules, verifyChangePasswordOtp);
+
+// 13. Client Portal Management — Account listing, details, status
+router.get('/client-portal', listClientAccounts);
+router.get('/client-portal/:clientId', getClientAccountDetails);
+router.patch('/client-portal/:clientId/status', updateClientStatusRules, updateClientStatus);
 
 module.exports = router;

@@ -14,7 +14,7 @@ const {
   verify2FAValidationRules,
   updateProfileValidationRules,
   changePasswordValidationRules,
-} = require('../../validations/auth.validation');
+} = require('../../validations/auth/auth.validation');
 const { protect } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();

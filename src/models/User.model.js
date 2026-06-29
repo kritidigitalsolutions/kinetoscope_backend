@@ -49,7 +49,21 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-
+    clientCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      uppercase: true,
+    },
+    assignedAgent: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
   },
   {
     timestamps: true, // Automatically manages createdAt and updatedAt fields

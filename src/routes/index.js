@@ -1,6 +1,7 @@
 const express = require('express');
-const authRoutes = require('./src/routes/auth/auth.routes');
-const superAdminRoutes = require('./src/routes/super-admin/superAdmin.routes');
+const authRoutes = require('./auth/auth.routes');
+const superAdminRoutes = require('./super-admin/super-admin.routes');
+const clientRoutes = require('./client/client.routes');
 
 const router = express.Router();
 
@@ -9,5 +10,8 @@ router.use('/auth', authRoutes);
 
 // Register super-admin-related endpoints
 router.use('/super-admin', superAdminRoutes);
+
+// Register client portal endpoints
+router.use('/client', clientRoutes);
 
 module.exports = router;
