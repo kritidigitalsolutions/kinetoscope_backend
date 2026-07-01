@@ -40,6 +40,39 @@ const calculateDashboardData = async (userId) => {
     nomineeProofDocument: profile.nomineeProofDocument,
   };
 
+  // Compute Next ROI Date
+  let nextRoiDate = null;
+  if (activeInvestmentsCount > 0) {
+    const earliestInvestment = [...activeInvestmentsList].sort((a, b) => new Date(a.investmentDate) - new Date(b.investmentDate))[0];
+    const startDate = new Date(earliestInvestment.investmentDate);
+    
+    // One month from earliest investment
+    const oneMonthLater = new Date(startDate);
+    oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
+
+    const now = new Date();
+    if (now < oneMonthLater) {
+      // First month: no ROI given, returns null
+      nextRoiDate = null;
+    } else {
+      // Next monthly anniversary from investmentDate
+      let candidate = new Date(oneMonthLater);
+      while (candidate <= now) {
+        candidate.setMonth(candidate.getMonth() + 1);
+      }
+      nextRoiDate = candidate;
+    }
+  }
+
+  const formatDateToDDMMMYYYY = (date) => {
+    if (!date) return '—';
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const day = String(date.getDate()).padStart(2, '0');
+    const monthStr = months[date.getMonth()];
+    const year = date.getFullYear();
+    return `${day} ${monthStr} ${year}`;
+  };
+
   return {
     profile,
     investments,
@@ -48,6 +81,8 @@ const calculateDashboardData = async (userId) => {
     roiAverage,
     riskProfile: profile.riskProfile,
     documents,
+    nextRoiDate: nextRoiDate ? nextRoiDate.toISOString().split('T')[0] : null,
+    nextRoiDateFormatted: nextRoiDate ? formatDateToDDMMMYYYY(nextRoiDate) : '—',
   };
 };
 

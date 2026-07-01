@@ -1,48 +1,58 @@
-const { storageBucket } = require('../config/firebase');
+const fs = require('fs');
+const path = require('path');
 
 /**
- * Upload a local file to Firebase Storage bucket
- * @param {string} localFilePath - Path to local file
- * @param {string} destinationPath - Path inside the bucket
- * @returns {Promise<string>} Public URL of the uploaded resource
+ * Save a local file to the static uploads directory (bypassing Firebase Storage)
+ * @param {string} localFilePath - Current temporary path of the file
+ * @param {string} destinationPath - Path inside the bucket (ignored)
+ * @returns {Promise<string>} Static local URL of the uploaded resource
  */
 const uploadToFirebase = async (localFilePath, destinationPath) => {
-  if (!storageBucket) {
-    console.log(`[Firebase Mock] Mock uploading ${localFilePath} to ${destinationPath}`);
-    return `https://storage.googleapis.com/mock-bucket/${destinationPath}`;
+  try {
+    const ext = path.extname(localFilePath);
+    const baseName = path.basename(localFilePath, ext);
+    const uniqueName = `${baseName}_permanent${ext}`;
+    
+    const uploadDir = path.join(__dirname, '../../uploads');
+    const destPath = path.join(uploadDir, uniqueName);
+    
+    // Ensure the uploads directory exists
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    
+    // Copy the local file to its permanent location
+    fs.copyFileSync(localFilePath, destPath);
+    
+    console.log(`[Storage] Saved file locally: ${uniqueName}`);
+    return `/uploads/${uniqueName}`;
+  } catch (error) {
+    console.error(`[Storage] Local copy failed: ${error.message}`);
+    throw error;
   }
-
-  const response = await storageBucket.upload(localFilePath, {
-    destination: destinationPath,
-    public: true,
-    metadata: {
-      cacheControl: 'public, max-age=31536000',
-    },
-  });
-
-  // Return public URL link
-  return response[0].publicUrl();
 };
 
 /**
- * Delete a file from Firebase Storage bucket
+ * Delete a file from the static uploads directory (bypassing Firebase Storage)
  * @param {string} fileUrl - Full URL or path of the target resource
  * @returns {Promise<boolean>} Deletion success result
  */
 const deleteFromFirebase = async (fileUrl) => {
-  if (!storageBucket) {
-    console.log(`[Firebase Mock] Mock deleting file ${fileUrl}`);
-    return true;
-  }
-
-  // Parse path out of public URL if required, then delete
   try {
-    const filename = fileUrl.split('/').pop();
-    const file = storageBucket.file(filename);
-    await file.delete();
+    if (!fileUrl) return true;
+    
+    // Extract filename from URL
+    const filename = path.basename(fileUrl);
+    const uploadDir = path.join(__dirname, '../../uploads');
+    const filePath = path.join(uploadDir, filename);
+    
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`[Storage] Deleted local file: ${filename}`);
+    }
     return true;
   } catch (error) {
-    console.error(`Firebase deletion failed: ${error.message}`);
+    console.error(`[Storage] Local file deletion failed: ${error.message}`);
     return false;
   }
 };

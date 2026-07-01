@@ -21,6 +21,16 @@ const {
   updateClientProfileRules,
 } = require('../../validations/client/client.validation');
 
+const {
+  sendChangePasswordOtpRules,
+  verifyChangePasswordOtpRules,
+} = require('../../validations/super-admin/change-password.validation');
+
+const {
+  sendChangePasswordOtpHandler,
+  verifyChangePasswordOtp,
+} = require('../../controllers/super-admin/change-password.controller');
+
 const router = express.Router();
 
 // --- PUBLIC CLIENT PORTAL AUTHENTICATION FLOW ---
@@ -47,5 +57,9 @@ router.patch('/profile', updateClientProfileRules, updateClientProfile);
 
 // 5. Client Documents Retrieval
 router.get('/documents', getClientDocuments);
+
+// 6. Settings - Change Password Flow (OTP verified)
+router.post('/settings/change-password/send-otp', sendChangePasswordOtpRules, sendChangePasswordOtpHandler);
+router.post('/settings/change-password/verify-otp', verifyChangePasswordOtpRules, verifyChangePasswordOtp);
 
 module.exports = router;

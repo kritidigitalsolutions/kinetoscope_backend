@@ -1,0 +1,58 @@
+const mongoose = require('mongoose');
+
+/**
+ * AgentCommission Schema representing commission payout history records for agents.
+ */
+const agentCommissionSchema = new mongoose.Schema(
+  {
+    agentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'Agent ID is required'],
+    },
+    period: {
+      type: String, // e.g. "Jan 2025", "Onboarding", "Special Campaign"
+      required: [true, 'Period is required'],
+    },
+    date: {
+      type: String, // e.g. "31/01/2025", "15/01/2024"
+      required: [true, 'Date is required'],
+    },
+    type: {
+      type: String,
+      enum: {
+        values: ['MONTHLY', 'ONE TIME', 'SPECIAL'],
+        message: 'Type must be MONTHLY, ONE TIME, or SPECIAL',
+      },
+      default: 'MONTHLY',
+    },
+    amount: {
+      type: Number,
+      required: [true, 'Amount is required'],
+      min: [0, 'Amount must be a non-negative number'],
+    },
+    status: {
+      type: String,
+      enum: {
+        values: ['PAID', 'PENDING'],
+        message: 'Status must be PAID or PENDING',
+      },
+      default: 'PENDING',
+    },
+    remarks: {
+      type: String,
+      trim: true,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// Indexes for fast lookup
+agentCommissionSchema.index({ agentId: 1 });
+agentCommissionSchema.index({ status: 1 });
+
+const AgentCommission = mongoose.model('AgentCommission', agentCommissionSchema);
+
+module.exports = AgentCommission;

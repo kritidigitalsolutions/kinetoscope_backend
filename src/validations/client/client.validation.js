@@ -111,7 +111,7 @@ const createClientValidationRules = [
   body('assignedAgent')
     .optional({ checkFalsy: true })
     .custom(value => {
-      if (value && value !== 'Direct Client (No Agent)' && !mongoose.Types.ObjectId.isValid(value)) {
+      if (value && value !== 'Direct Client (No Agent)' && value !== 'null' && value !== 'undefined' && !mongoose.Types.ObjectId.isValid(value)) {
         throw new Error('Assigned Agent must be a valid MongoDB ID');
       }
       return true;
@@ -218,7 +218,7 @@ const updateClientRulesByAdmin = [
   body('assignedAgent')
     .optional({ nullable: true, checkFalsy: true })
     .custom(value => {
-      if (value && value !== 'null' && value !== 'Direct Client (No Agent)' && !mongoose.Types.ObjectId.isValid(value)) {
+      if (value && value !== 'null' && value !== 'undefined' && value !== 'Direct Client (No Agent)' && !mongoose.Types.ObjectId.isValid(value)) {
         throw new Error('Assigned Agent must be a valid MongoDB ID');
       }
       return true;

@@ -38,8 +38,25 @@ const {
   updateClient,
   deleteClient,
   previewClientDashboard,
-  getAllAgents,
+  updateClientRoiRate,
 } = require('../../controllers/super-admin/client-management.controller');
+
+// Agent management controllers and validations
+const {
+  createAgent,
+  getAllAgents,
+  getAgentById,
+  updateAgent,
+  deleteAgent,
+  getAgentClients,
+  getAgentCommissions,
+  updateAgentStatus,
+} = require('../../controllers/super-admin/agent-management.controller');
+
+const {
+  createAgentValidationRules,
+  updateAgentRulesByAdmin,
+} = require('../../validations/super-admin/agent.validation');
 
 const {
   getManageClients,
@@ -81,6 +98,14 @@ const clientOnboardingUpload = upload.fields([
   { name: 'nomineeProofDocument', maxCount: 1 },
 ]);
 
+// Configure Multer field parsing for agent onboarding documents
+const agentOnboardingUpload = upload.fields([
+  { name: 'panDocument', maxCount: 1 },
+  { name: 'idProofDocument', maxCount: 1 },
+  { name: 'bankProofDocument', maxCount: 1 },
+  { name: 'nomineeProofDocument', maxCount: 1 },
+]);
+
 const router = express.Router();
 
 // Apply Auth and Role Guard to all Super Admin endpoints
@@ -108,6 +133,7 @@ router.route('/clients/:id')
 router.get('/clients/:id/investments', getClientInvestmentsTab);
 router.get('/clients/:id/roi', getClientRoiTab);
 router.patch('/clients/:id/roi/:payoutId/pay', markRoiPaid);
+router.patch('/clients/:id/roi-rate', updateClientRoiRate);
 router.get('/clients/:id/documents', getClientDocumentsTab);
 router.get('/clients/:id/perks', getClientPerksTab);
 
@@ -130,7 +156,16 @@ router.route('/roi')
 // 5. Agent Management
 router.route('/agents')
   .get(getAllAgents)
-  .post((req, res) => res.status(201).json({ status: 'success', message: 'Create Agent placeholder' }));
+  .post(agentOnboardingUpload, createAgentValidationRules, createAgent);
+
+router.route('/agents/:id')
+  .get(getAgentById)
+  .patch(agentOnboardingUpload, updateAgentRulesByAdmin, updateAgent)
+  .delete(deleteAgent);
+
+router.get('/agents/:id/clients', getAgentClients);
+router.get('/agents/:id/commissions', getAgentCommissions);
+router.patch('/agents/:id/status', updateAgentStatus);
 
 // 6. Deposit & Withdrawal Approvals
 router.route('/transactions/approvals')

@@ -1,0 +1,156 @@
+const User = require('../models/User.model');
+const AgentProfile = require('../models/AgentProfile.model');
+const Investment = require('../models/Investment.model');
+const AppError = require('../utils/AppError');
+const { ROLES } = require('../constants/roles');
+
+/**
+ * Service to aggregate agent data for agent header, summary cards, and profile tab.
+ *
+ * @param {string} agentId - User ID of the agent
+ * @returns {Promise<Object>} Formatted object with header, summaryCards, and profile details
+ */
+const getAgentDetailsData = async (agentId) => {
+  const user = await User.findById(agentId);
+  if (!user || user.role !== ROLES.AGENT) {
+    throw new AppError('Agent account not found.', 404);
+  }
+
+  const profile = await AgentProfile.findOne({ userId: user._id });
+  if (!profile) {
+    throw new AppError('Agent profile not found.', 404);
+  }
+
+  // Find clients assigned to this agent
+  const clients = await User.find({ role: ROLES.CLIENT, assignedAgent: user._id }, { _id: 1 });
+  const clientIds = clients.map(c => c._id);
+  const clientsCount = clientIds.length;
+
+  // Find active investments of these clients
+  let totalInvestment = 0;
+  if (clientsCount > 0) {
+    const investments = await Investment.find({ clientId: { $in: clientIds }, status: 'active' }, { investmentAmount: 1 });
+    totalInvestment = investments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
+  }
+
+  return {
+    header: {
+      agentName: user.name,
+      agentCode: user.clientCode || '',
+      status: profile.status ? profile.status.toUpperCase() : 'ACTIVE',
+    },
+    summaryCards: {
+      clientsCount,
+      totalInvestment,
+      oneTimeCommission: profile.oneTimeCommission || 0,
+      monthlySlab: profile.monthlySlab || '',
+      specialCommission: profile.specialCommission || 0,
+    },
+    profile: {
+      fullName: profile.fullName || user.name,
+      email: profile.email || user.email,
+      phone: profile.phone || '',
+      joinDate: user.createdAt,
+      panNumber: profile.panNumber || '',
+      aadhaarNumber: profile.aadhaarNumber || '',
+      bankName: profile.bankName || '',
+      accountNumber: profile.accountNumber || '',
+      ifscCode: profile.ifscCode || '',
+      residencyStatus: profile.residencyStatus || 'National (Domestic)',
+      nomineeName: profile.nomineeName || '',
+      nomineeRelation: profile.nomineeRelation || '',
+      nomineePhone: profile.nomineePhone || '',
+      nomineeEmail: profile.nomineeEmail || '',
+      nomineeResidency: profile.nomineeResidency || 'National (Domestic)',
+      panDocument: profile.panDocument || '',
+      idProofDocument: profile.idProofDocument || '',
+      bankProofDocument: profile.bankProofDocument || '',
+      nomineeProofDocument: profile.nomineeProofDocument || '',
+      oneTimeCommission: profile.oneTimeCommission || 0,
+      monthlySlab: profile.monthlySlab || '',
+      specialCommission: profile.specialCommission || 0,
+      portalPassword: profile.portalPassword || '',
+    },
+  };
+};
+
+/**
+ * Fetch and format agent documents with metadata.
+ *
+ * @param {string} agentId - Agent User ID
+ * @returns {Promise<Array>} List of document objects
+ */
+const getAgentDocumentsData = async (agentId) => {
+  const user = await User.findById(agentId);
+  if (!user || user.role !== ROLES.AGENT) {
+    throw new AppError('Agent account not found.', 404);
+  }
+
+  const profile = await AgentProfile.findOne({ userId: user._id });
+  if (!profile) {
+    throw new AppError('Agent profile not found.', 404);
+  }
+
+  const joinDateStr = user.createdAt ? user.createdAt.toISOString().split('T')[0] : '';
+  const isInternational = profile.residencyStatus === 'International';
+  const isNomineeInternational = profile.nomineeResidency === 'International';
+
+  const docTypes = [
+    {
+      name: isInternational ? 'Tax ID Upload' : 'PAN Card Upload',
+      key: 'panDocument',
+      description: isInternational ? 'Proof of Tax ID or SSN Identification' : 'Proof of PAN Card Identification',
+      fileSize: '1.2 MB',
+    },
+    {
+      name: isInternational ? 'International Passport / National ID Card Upload' : 'ID Proof Upload (Aadhaar / Driving License / Passport)',
+      key: 'idProofDocument',
+      description: isInternational ? 'Proof of International Passport or National ID' : 'Proof of Identity (Aadhaar / Driving License / Passport)',
+      fileSize: '2.4 MB',
+    },
+    {
+      name: 'Bank Details Document',
+      key: 'bankProofDocument',
+      description: 'Cancelled Cheque or Bank Statement',
+      fileSize: '1.8 MB',
+    },
+    {
+      name: isNomineeInternational ? 'Nominee International Passport / National ID Card Upload' : 'Nominee ID Proof (Aadhaar / Driving License / Passport)',
+      key: 'nomineeProofDocument',
+      description: isNomineeInternational ? 'Proof of Nominee International Passport or National ID' : 'Proof of Nominee Identity (Aadhaar / Driving License / Passport)',
+      fileSize: '1.5 MB',
+    },
+  ];
+
+  const safeName = user.name.replace(/\s+/g, '_');
+
+  const documents = docTypes.map(doc => {
+    const url = profile[doc.key] || '';
+    const fileExtension = url.split('.').pop().split('?')[0] || 'pdf';
+    
+    const suffix = doc.key.replace('Document', '').replace('Proof', '');
+    const capitalizedSuffix = suffix.charAt(0).toUpperCase() + suffix.slice(1);
+    const fileName = `${safeName}_${capitalizedSuffix}.${fileExtension}`;
+
+    return {
+      name: doc.name,
+      key: doc.key,
+      url,
+      fileName,
+      fileSize: doc.fileSize,
+      description: doc.description,
+      holder: user.name,
+      status: profile.status === 'active' ? 'Verified' : 'Pending',
+      verification: 'Digital Signatures Valid',
+      uploadedDate: joinDateStr,
+      uploaded: joinDateStr,
+    };
+  });
+
+  return documents;
+};
+
+module.exports = {
+  getAgentDetailsData,
+  getAgentDocumentsData,
+};

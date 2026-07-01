@@ -1,4 +1,5 @@
 const fs = require('fs');
+const mongoose = require('mongoose');
 const User = require('../../models/User.model');
 const ClientProfile = require('../../models/ClientProfile.model');
 const { uploadToFirebase, deleteFromFirebase } = require('../../services/firebase.service');
@@ -113,8 +114,10 @@ const createClient = asyncHandler(async (req, res, next) => {
   }
 
   // 2) Check if email is already registered in the system
+  console.log(`[CreateClient] Checking email: "${email}" (type: ${typeof email})`);
   const existingUser = await User.findOne({ email });
   if (existingUser) {
+    console.log(`[CreateClient] Duplicate email match found:`, { id: existingUser._id, name: existingUser.name, email: existingUser.email });
     cleanupLocalFiles(req.files);
     return next(new AppError('Email address is already in use by another account.', 400));
   }
@@ -182,7 +185,7 @@ const createClient = asyncHandler(async (req, res, next) => {
       isActive: true,
       is2FAEnabled: false, // Default false for smooth temp password login
       clientCode,
-      assignedAgent: (assignedAgent && assignedAgent !== 'null' && assignedAgent !== 'Direct Client (No Agent)') ? assignedAgent : undefined,
+      assignedAgent: (assignedAgent && mongoose.Types.ObjectId.isValid(assignedAgent)) ? assignedAgent : undefined,
       createdBy: req.user.id,
     });
 
@@ -348,7 +351,7 @@ const updateClient = asyncHandler(async (req, res, next) => {
     userUpdates.name = req.body.fullName;
   }
   if (req.body.assignedAgent !== undefined) {
-    userUpdates.assignedAgent = !req.body.assignedAgent || req.body.assignedAgent === 'null' || req.body.assignedAgent === 'Direct Client (No Agent)' ? null : req.body.assignedAgent;
+    userUpdates.assignedAgent = (req.body.assignedAgent && mongoose.Types.ObjectId.isValid(req.body.assignedAgent)) ? req.body.assignedAgent : null;
   }
   if (req.body.status) {
     req.body.status = req.body.status.toLowerCase();
@@ -532,6 +535,43 @@ const getAllAgents = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * Update client's Monthly ROI rate (Super Admin only)
+ * PATCH /api/super-admin/clients/:id/roi-rate
+ */
+const updateClientRoiRate = asyncHandler(async (req, res, next) => {
+  const { monthlyRoi } = req.body;
+  const userId = req.params.id;
+
+  if (monthlyRoi === undefined) {
+    return next(new AppError('Monthly ROI rate is required.', 400));
+  }
+
+  const roiNum = Number(monthlyRoi);
+  if (isNaN(roiNum) || roiNum < 0) {
+    return next(new AppError('Monthly ROI rate must be a non-negative number.', 400));
+  }
+
+  const updatedProfile = await ClientProfile.findOneAndUpdate(
+    { userId },
+    { $set: { monthlyRoi: roiNum } },
+    { new: true, runValidators: true }
+  );
+
+  if (!updatedProfile) {
+    return next(new AppError('Client profile not found.', 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    message: 'Monthly ROI rate updated successfully.',
+    data: {
+      userId,
+      monthlyRoi: roiNum,
+    },
+  });
+});
+
 module.exports = {
   createClient,
   getAllClients,
@@ -540,4 +580,5 @@ module.exports = {
   deleteClient,
   previewClientDashboard,
   getAllAgents,
+  updateClientRoiRate,
 };
