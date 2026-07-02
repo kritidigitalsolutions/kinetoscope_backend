@@ -70,6 +70,13 @@ const userSchema = new mongoose.Schema(
   }
 );
 
+// Indexes for high-performance sorting, searching, and populating
+userSchema.index({ role: 1 });
+userSchema.index({ createdAt: -1 });
+userSchema.index({ role: 1, createdAt: -1 });
+userSchema.index({ name: 1 });
+userSchema.index({ assignedAgent: 1 });
+
 // Pre-save hook to hash password if it has been modified (Mongoose 9+ async style)
 userSchema.pre('save', async function () {
   if (!this.isModified('password')) return;

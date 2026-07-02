@@ -66,21 +66,25 @@ const getManageClientsData = async ({
     query = query.skip(skip).limit(Number(limit));
   }
 
-  // Sort by newest first
-  const users = await query.sort({ createdAt: -1 });
-  const total = await User.countDocuments(userQuery);
+  // Sort by newest first and count total matching documents in parallel
+  const [users, total] = await Promise.all([
+    query.sort({ createdAt: -1 }).lean(),
+    User.countDocuments(userQuery)
+  ]);
 
   const userIds = users.map(u => u._id);
 
-  // Fetch client profiles in bulk
-  const profiles = await ClientProfile.find({ userId: { $in: userIds } });
+  // Fetch client profiles and all investments for these clients in bulk in parallel
+  const [profiles, allInvestments] = await Promise.all([
+    ClientProfile.find({ userId: { $in: userIds } }).lean(),
+    Investment.find({ clientId: { $in: userIds } }).lean()
+  ]);
+
   const profileMap = {};
   profiles.forEach(p => {
     profileMap[p.userId.toString()] = p;
   });
 
-  // Fetch all investments for these clients in bulk
-  const allInvestments = await Investment.find({ clientId: { $in: userIds } });
   const investmentsMap = {};
   userIds.forEach(id => {
     investmentsMap[id.toString()] = [];

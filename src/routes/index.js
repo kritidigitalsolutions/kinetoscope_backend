@@ -18,4 +18,42 @@ router.use('/client', clientRoutes);
 // Register agent portal endpoints
 router.use('/agent', agentRoutes);
 
+// Document Proxy to bypass CORS issues when downloading/previewing files from Cloudinary
+const https = require('https');
+const AppError = require('../utils/AppError');
+
+router.get('/documents/proxy', (req, res, next) => {
+  const { url, download } = req.query;
+
+  if (!url) {
+    return next(new AppError('URL parameter is required', 400));
+  }
+
+  // Ensure it's a Cloudinary URL to prevent SSRF
+  if (!url.startsWith('https://res.cloudinary.com/')) {
+    return next(new AppError('Access denied. Only Cloudinary URLs can be proxied.', 403));
+  }
+
+  https.get(url, (cloudinaryRes) => {
+    const contentType = cloudinaryRes.headers['content-type'] || 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+
+    const filename = url.split('/').pop().split('?')[0] || 'document.pdf';
+
+    if (download === 'true') {
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    } else {
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    }
+
+    cloudinaryRes.pipe(res);
+  }).on('error', (err) => {
+    console.error('[Document Proxy Error]:', err.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve the document.'
+    });
+  });
+});
+
 module.exports = router;

@@ -156,6 +156,10 @@ const getClientDocumentsData = async (clientId) => {
     const capitalizedSuffix = suffix.charAt(0).toUpperCase() + suffix.slice(1);
     const fileName = `${safeName}_${capitalizedSuffix}.${fileExtension}`;
 
+    // Per-document verification status
+    const verifiedField = `${doc.key}Verified`;
+    const isDocVerified = profile[verifiedField] === true;
+
     return {
       name: doc.name,
       key: doc.key,
@@ -164,14 +168,25 @@ const getClientDocumentsData = async (clientId) => {
       fileSize: doc.fileSize,
       description: doc.description,
       holder: user.name,
-      status: kycStatusVal === 'VERIFIED' ? 'Verified' : kycStatusVal,
+      status: isDocVerified ? 'Verified' : 'Pending Verification',
+      verified: isDocVerified,
       verification: 'Digital Signatures Valid',
       uploadedDate: joinDateStr,
       uploaded: joinDateStr,
     };
   });
 
-  return documents;
+  return {
+    documents,
+    kycStatus: kycStatusVal,
+    verificationStatus: {
+      panDocumentVerified: profile.panDocumentVerified || false,
+      aadhaarDocumentVerified: profile.aadhaarDocumentVerified || false,
+      bankProofDocumentVerified: profile.bankProofDocumentVerified || false,
+      agreementDocumentVerified: profile.agreementDocumentVerified || false,
+      nomineeProofDocumentVerified: profile.nomineeProofDocumentVerified || false,
+    },
+  };
 };
 
 module.exports = {

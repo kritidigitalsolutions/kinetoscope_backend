@@ -57,14 +57,12 @@ const markRoiPaid = asyncHandler(async (req, res, next) => {
  * GET /api/super-admin/clients/:id/documents
  */
 const getClientDocumentsTab = asyncHandler(async (req, res, next) => {
-  const documents = await clientDetailsService.getClientDocumentsData(req.params.id);
+  const documentsData = await clientDetailsService.getClientDocumentsData(req.params.id);
 
   res.status(200).json({
     success: true,
     message: 'Client documents retrieved successfully',
-    data: {
-      documents,
-    },
+    data: documentsData,
   });
 });
 

@@ -170,6 +170,7 @@ const createClient = asyncHandler(async (req, res, next) => {
 
   try {
     // 6) Create the User document
+    console.log('[CreateClient] Step 6: Creating User document...');
     createdUser = await User.create({
       name: fullName,
       email,
@@ -181,8 +182,10 @@ const createClient = asyncHandler(async (req, res, next) => {
       assignedAgent: (assignedAgent && mongoose.Types.ObjectId.isValid(assignedAgent)) ? assignedAgent : undefined,
       createdBy: req.user.id,
     });
+    console.log('[CreateClient] Step 6: User created successfully:', createdUser._id);
 
     // 7) Create the ClientProfile document
+    console.log('[CreateClient] Step 7: Creating ClientProfile document...');
     createdProfile = await ClientProfile.create({
       userId: createdUser._id,
       fullName,
@@ -216,7 +219,9 @@ const createClient = asyncHandler(async (req, res, next) => {
       agentCommission: finalAgentCommission,
       portalPassword: tempPassword,
     });
+    console.log('[CreateClient] Step 7: ClientProfile created successfully:', createdProfile._id);
   } catch (dbError) {
+    console.error('[CreateClient] DATABASE ERROR:', dbError.message, dbError.stack);
     // Rollback: Delete user and profile if either creation fails
     if (createdUser) {
       await User.findByIdAndDelete(createdUser._id);
@@ -279,17 +284,20 @@ const getAllClients = asyncHandler(async (req, res, next) => {
 
   const skip = (page - 1) * limit;
 
-  const users = await User.find(userQuery)
-    .populate('assignedAgent', 'name email')
-    .populate('createdBy', 'name email')
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(Number(limit));
-
-  const total = await User.countDocuments(userQuery);
+  // Run user query and count in parallel, and use lean mode for faster query execution
+  const [users, total] = await Promise.all([
+    User.find(userQuery)
+      .populate('assignedAgent', 'name email')
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .lean(),
+    User.countDocuments(userQuery)
+  ]);
 
   const userIds = users.map(u => u._id);
-  const profiles = await ClientProfile.find({ userId: { $in: userIds } });
+  const profiles = await ClientProfile.find({ userId: { $in: userIds } }).lean();
   
   const profileMap = {};
   profiles.forEach(p => {
@@ -568,6 +576,77 @@ const updateClientRoiRate = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * Verify a single KYC document for a client (Super Admin only)
+ * PATCH /api/super-admin/clients/:id/verify-document
+ * Body: { documentField: "panDocument" | "aadhaarDocument" | "bankProofDocument" | "agreementDocument" | "nomineeProofDocument" }
+ */
+const verifyDocument = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { documentField } = req.body;
+
+  // Allowed document fields that can be verified
+  const allowedFields = [
+    'panDocument',
+    'aadhaarDocument',
+    'bankProofDocument',
+    'agreementDocument',
+    'nomineeProofDocument',
+  ];
+
+  if (!documentField || !allowedFields.includes(documentField)) {
+    return next(new AppError(`Invalid document field. Must be one of: ${allowedFields.join(', ')}`, 400));
+  }
+
+  const profile = await ClientProfile.findOne({ userId: id });
+  if (!profile) {
+    return next(new AppError('Client profile not found.', 404));
+  }
+
+  // Check that the document actually exists (has a URL)
+  if (!profile[documentField]) {
+    return next(new AppError(`Document "${documentField}" has not been uploaded yet.`, 400));
+  }
+
+  // Mark the specific document as verified
+  const verifiedField = `${documentField}Verified`;
+  profile[verifiedField] = true;
+
+  // Check if ALL documents are now verified
+  const allVerified =
+    (documentField === 'panDocument' ? true : profile.panDocumentVerified) &&
+    (documentField === 'aadhaarDocument' ? true : profile.aadhaarDocumentVerified) &&
+    (documentField === 'bankProofDocument' ? true : profile.bankProofDocumentVerified) &&
+    (documentField === 'agreementDocument' ? true : profile.agreementDocumentVerified) &&
+    (documentField === 'nomineeProofDocument' ? true : profile.nomineeProofDocumentVerified);
+
+  // Auto-update KYC status to VERIFIED when all documents are verified
+  if (allVerified) {
+    profile.kycStatus = 'VERIFIED';
+  }
+
+  await profile.save();
+
+  res.status(200).json({
+    success: true,
+    message: allVerified
+      ? 'All documents verified. KYC status updated to VERIFIED.'
+      : `Document "${documentField}" verified successfully.`,
+    data: {
+      documentField,
+      verified: true,
+      kycStatus: profile.kycStatus,
+      verificationStatus: {
+        panDocumentVerified: profile.panDocumentVerified,
+        aadhaarDocumentVerified: profile.aadhaarDocumentVerified,
+        bankProofDocumentVerified: profile.bankProofDocumentVerified,
+        agreementDocumentVerified: profile.agreementDocumentVerified,
+        nomineeProofDocumentVerified: profile.nomineeProofDocumentVerified,
+      },
+    },
+  });
+});
+
 module.exports = {
   createClient,
   getAllClients,
@@ -577,4 +656,5 @@ module.exports = {
   previewClientDashboard,
   getAllAgents,
   updateClientRoiRate,
+  verifyDocument,
 };

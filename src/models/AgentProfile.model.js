@@ -163,6 +163,31 @@ const agentProfileSchema = new mongoose.Schema(
       default: 'National (Domestic)',
     },
     // Status & Portal Password
+    // Per-document verification status (Super Admin verifies each individually)
+    panDocumentVerified: {
+      type: Boolean,
+      default: false,
+    },
+    idProofDocumentVerified: {
+      type: Boolean,
+      default: false,
+    },
+    bankProofDocumentVerified: {
+      type: Boolean,
+      default: false,
+    },
+    nomineeProofDocumentVerified: {
+      type: Boolean,
+      default: false,
+    },
+    kycStatus: {
+      type: String,
+      enum: {
+        values: ['PENDING', 'VERIFIED', 'FAILED', 'NOT_STARTED'],
+        message: 'KYC status must be: PENDING, VERIFIED, FAILED, or NOT_STARTED',
+      },
+      default: 'PENDING',
+    },
     status: {
       type: String,
       enum: {

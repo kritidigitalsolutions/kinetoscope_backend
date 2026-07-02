@@ -177,6 +177,27 @@ const clientProfileSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Nominee proof document URL is required'],
     },
+    // Per-document verification status (Super Admin verifies each individually)
+    panDocumentVerified: {
+      type: Boolean,
+      default: false,
+    },
+    aadhaarDocumentVerified: {
+      type: Boolean,
+      default: false,
+    },
+    bankProofDocumentVerified: {
+      type: Boolean,
+      default: false,
+    },
+    agreementDocumentVerified: {
+      type: Boolean,
+      default: false,
+    },
+    nomineeProofDocumentVerified: {
+      type: Boolean,
+      default: false,
+    },
     status: {
       type: String,
       enum: {

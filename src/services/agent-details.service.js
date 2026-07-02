@@ -124,6 +124,8 @@ const getAgentDocumentsData = async (agentId) => {
 
   const safeName = user.name.replace(/\s+/g, '_');
 
+  const kycStatusVal = profile.kycStatus || 'PENDING';
+
   const documents = docTypes.map(doc => {
     const url = profile[doc.key] || '';
     const fileExtension = url.split('.').pop().split('?')[0] || 'pdf';
@@ -131,6 +133,9 @@ const getAgentDocumentsData = async (agentId) => {
     const suffix = doc.key.replace('Document', '').replace('Proof', '');
     const capitalizedSuffix = suffix.charAt(0).toUpperCase() + suffix.slice(1);
     const fileName = `${safeName}_${capitalizedSuffix}.${fileExtension}`;
+
+    const verifiedField = `${doc.key}Verified`;
+    const isDocVerified = profile[verifiedField] === true;
 
     return {
       name: doc.name,
@@ -140,14 +145,24 @@ const getAgentDocumentsData = async (agentId) => {
       fileSize: doc.fileSize,
       description: doc.description,
       holder: user.name,
-      status: profile.status === 'active' ? 'Verified' : 'Pending',
+      status: isDocVerified ? 'Verified' : 'Pending Verification',
+      verified: isDocVerified,
       verification: 'Digital Signatures Valid',
       uploadedDate: joinDateStr,
       uploaded: joinDateStr,
     };
   });
 
-  return documents;
+  return {
+    documents,
+    kycStatus: kycStatusVal,
+    verificationStatus: {
+      panDocumentVerified: profile.panDocumentVerified || false,
+      idProofDocumentVerified: profile.idProofDocumentVerified || false,
+      bankProofDocumentVerified: profile.bankProofDocumentVerified || false,
+      nomineeProofDocumentVerified: profile.nomineeProofDocumentVerified || false,
+    },
+  };
 };
 
 module.exports = {

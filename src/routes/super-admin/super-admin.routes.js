@@ -39,6 +39,7 @@ const {
   deleteClient,
   previewClientDashboard,
   updateClientRoiRate,
+  verifyDocument,
 } = require('../../controllers/super-admin/client-management.controller');
 
 // Agent management controllers and validations
@@ -51,6 +52,7 @@ const {
   getAgentClients,
   getAgentCommissions,
   updateAgentStatus,
+  verifyAgentDocument,
 } = require('../../controllers/super-admin/agent-management.controller');
 
 const {
@@ -135,6 +137,7 @@ router.get('/clients/:id/roi', getClientRoiTab);
 router.patch('/clients/:id/roi/:payoutId/pay', markRoiPaid);
 router.patch('/clients/:id/roi-rate', updateClientRoiRate);
 router.get('/clients/:id/documents', getClientDocumentsTab);
+router.patch('/clients/:id/verify-document', verifyDocument);
 router.get('/clients/:id/perks', getClientPerksTab);
 
 // Client dashboard preview
@@ -166,6 +169,7 @@ router.route('/agents/:id')
 router.get('/agents/:id/clients', getAgentClients);
 router.get('/agents/:id/commissions', getAgentCommissions);
 router.patch('/agents/:id/status', updateAgentStatus);
+router.patch('/agents/:id/verify-document', verifyAgentDocument);
 
 // 6. Deposit & Withdrawal Approvals
 router.route('/transactions/approvals')

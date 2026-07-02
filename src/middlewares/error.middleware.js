@@ -6,6 +6,9 @@ const sendErrorDev = (err, res) => {
 };
 
 const sendErrorProd = (err, res) => {
+  // Always log the full error for server-side debugging
+  console.error('PROD ERROR 💥:', err.message, err.stack);
+
   // Operational, trusted error: send message to client
   if (err.isOperational) {
     res.status(err.statusCode).json({
@@ -13,11 +16,10 @@ const sendErrorProd = (err, res) => {
       message: err.message,
     });
   } else {
-    // Programming or other unknown error: don't leak details to client
-    console.error('ERROR 💥:', err);
-    res.status(500).json({
+    // Programming or other unknown error — still send the message for debugging
+    res.status(err.statusCode || 500).json({
       status: 'error',
-      message: 'Something went very wrong!',
+      message: err.message || 'Something went very wrong!',
     });
   }
 };

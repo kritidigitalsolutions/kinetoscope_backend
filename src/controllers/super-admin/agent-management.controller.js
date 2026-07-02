@@ -245,28 +245,32 @@ const getAllAgents = asyncHandler(async (req, res, next) => {
 
   const skip = (page - 1) * limit;
 
-  const users = await User.find(userQuery)
-    .populate('createdBy', 'name email')
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(Number(limit));
-
-  const total = await User.countDocuments(userQuery);
+  // Run user query and count in parallel, and use lean mode for faster query execution
+  const [users, total] = await Promise.all([
+    User.find(userQuery)
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .lean(),
+    User.countDocuments(userQuery)
+  ]);
 
   const agentIds = users.map(u => u._id);
 
-  // 1) Fetch agent profiles in bulk
-  const profiles = await AgentProfile.find({ userId: { $in: agentIds } });
+  // Fetch agent profiles and assigned clients in parallel in bulk
+  const [profiles, allClients] = await Promise.all([
+    AgentProfile.find({ userId: { $in: agentIds } }).lean(),
+    User.find(
+      { role: ROLES.CLIENT, assignedAgent: { $in: agentIds } },
+      { _id: 1, assignedAgent: 1 }
+    ).lean()
+  ]);
+
   const profileMap = {};
   profiles.forEach(p => {
     profileMap[p.userId.toString()] = p;
   });
-
-  // 2) Fetch clients assigned to these agents in bulk
-  const allClients = await User.find(
-    { role: ROLES.CLIENT, assignedAgent: { $in: agentIds } },
-    { _id: 1, assignedAgent: 1 }
-  );
 
   // Map agent ID to their list of client IDs
   const agentClientsMap = {};
@@ -291,7 +295,7 @@ const getAllAgents = asyncHandler(async (req, res, next) => {
     const investments = await Investment.find(
       { clientId: { $in: allClientIds }, status: 'active' },
       { clientId: 1, investmentAmount: 1 }
-    );
+    ).lean();
     investments.forEach(inv => {
       const clientIdStr = inv.clientId.toString();
       investmentMap[clientIdStr] = (investmentMap[clientIdStr] || 0) + inv.investmentAmount;
@@ -339,13 +343,15 @@ const getAllAgents = asyncHandler(async (req, res, next) => {
  */
 const getAgentById = asyncHandler(async (req, res, next) => {
   const details = await agentDetailsService.getAgentDetailsData(req.params.id);
-  const documents = await agentDetailsService.getAgentDocumentsData(req.params.id);
+  const documentsData = await agentDetailsService.getAgentDocumentsData(req.params.id);
 
   res.status(200).json({
     success: true,
     data: {
       ...details,
-      documents,
+      documents: documentsData.documents,
+      kycStatus: documentsData.kycStatus,
+      verificationStatus: documentsData.verificationStatus,
     },
   });
 });
@@ -688,6 +694,69 @@ const updateAgentStatus = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * Verify a single KYC document for an agent (Super Admin only)
+ * PATCH /api/super-admin/agents/:id/verify-document
+ * Body: { documentField: "panDocument" | "idProofDocument" | "bankProofDocument" | "nomineeProofDocument" }
+ */
+const verifyAgentDocument = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { documentField } = req.body;
+
+  const allowedFields = [
+    'panDocument',
+    'idProofDocument',
+    'bankProofDocument',
+    'nomineeProofDocument',
+  ];
+
+  if (!documentField || !allowedFields.includes(documentField)) {
+    return next(new AppError(`Invalid document field. Must be one of: ${allowedFields.join(', ')}`, 400));
+  }
+
+  const profile = await AgentProfile.findOne({ userId: id });
+  if (!profile) {
+    return next(new AppError('Agent profile not found.', 404));
+  }
+
+  if (!profile[documentField]) {
+    return next(new AppError(`Document "${documentField}" has not been uploaded yet.`, 400));
+  }
+
+  const verifiedField = `${documentField}Verified`;
+  profile[verifiedField] = true;
+
+  const allVerified =
+    (documentField === 'panDocument' ? true : profile.panDocumentVerified) &&
+    (documentField === 'idProofDocument' ? true : profile.idProofDocumentVerified) &&
+    (documentField === 'bankProofDocument' ? true : profile.bankProofDocumentVerified) &&
+    (documentField === 'nomineeProofDocument' ? true : profile.nomineeProofDocumentVerified);
+
+  if (allVerified) {
+    profile.kycStatus = 'VERIFIED';
+  }
+
+  await profile.save();
+
+  res.status(200).json({
+    success: true,
+    message: allVerified
+      ? 'All documents verified. Agent KYC status updated to VERIFIED.'
+      : `Document "${documentField}" verified successfully.`,
+    data: {
+      documentField,
+      verified: true,
+      kycStatus: profile.kycStatus,
+      verificationStatus: {
+        panDocumentVerified: profile.panDocumentVerified,
+        idProofDocumentVerified: profile.idProofDocumentVerified,
+        bankProofDocumentVerified: profile.bankProofDocumentVerified,
+        nomineeProofDocumentVerified: profile.nomineeProofDocumentVerified,
+      },
+    },
+  });
+});
+
 module.exports = {
   createAgent,
   getAllAgents,
@@ -697,5 +766,6 @@ module.exports = {
   getAgentClients,
   getAgentCommissions,
   updateAgentStatus,
+  verifyAgentDocument,
 };
 
