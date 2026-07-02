@@ -201,6 +201,9 @@ const clientProfileSchema = new mongoose.Schema(
       },
       default: 'SILVER',
     },
+    contractStartDate: {
+      type: Date,
+    },
     contractEndDate: {
       type: Date,
     },

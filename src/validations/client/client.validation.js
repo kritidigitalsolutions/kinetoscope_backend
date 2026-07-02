@@ -128,6 +128,9 @@ const createClientValidationRules = [
   body('tier')
     .optional({ checkFalsy: true })
     .isIn(['DIAMOND', 'PLATINUM', 'GOLD', 'SILVER']).withMessage('Tier must be either: DIAMOND, PLATINUM, GOLD, or SILVER'),
+  body('contractStartDate')
+    .optional({ checkFalsy: true })
+    .isISO8601().withMessage('Contract Start Date must be a valid date'),
   body('contractEndDate')
     .optional({ checkFalsy: true })
     .isISO8601().withMessage('Contract End Date must be a valid date'),
@@ -235,6 +238,9 @@ const updateClientRulesByAdmin = [
   body('tier')
     .optional({ checkFalsy: true })
     .isIn(['DIAMOND', 'PLATINUM', 'GOLD', 'SILVER']).withMessage('Tier must be either: DIAMOND, PLATINUM, GOLD, or SILVER'),
+  body('contractStartDate')
+    .optional({ checkFalsy: true })
+    .isISO8601().withMessage('Contract Start Date must be a valid date'),
   body('contractEndDate')
     .optional({ checkFalsy: true })
     .isISO8601().withMessage('Contract End Date must be a valid date'),

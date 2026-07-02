@@ -14,7 +14,11 @@ app.use(helmet());
 // Enable CORS
 const allowedOrigins = [
   'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
   'https://kinetoscope-superadmin-seven.vercel.app',
+  'https://kinetoscope-clientadmin.vercel.app',
+  'https://kinetoscope-agentadmin.vercel.app',
   process.env.FRONTEND_URL
 ].filter(Boolean);
 

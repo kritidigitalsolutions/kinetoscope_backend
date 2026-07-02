@@ -115,6 +115,7 @@ const getManageClientsData = async ({
     return {
       clientId: user.clientCode || '',
       joinDate: user.createdAt,
+      contractStartDate: profile ? profile.contractStartDate : null,
       contractEndDate: profile ? profile.contractEndDate : null,
       clientName: user.name,
       email: user.email,

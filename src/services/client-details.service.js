@@ -79,6 +79,8 @@ const getClientDetailsData = async (clientId) => {
       nomineePhone: profile.nomineePhone || '',
       nomineeEmail: profile.nomineeEmail || '',
       nomineeResidency: profile.nomineeResidency || 'National (Domestic)',
+      contractStartDate: profile.contractStartDate || null,
+      contractEndDate: profile.contractEndDate || null,
       panDocument: profile.panDocument || '',
       aadhaarDocument: profile.aadhaarDocument || '',
       bankProofDocument: profile.bankProofDocument || '',

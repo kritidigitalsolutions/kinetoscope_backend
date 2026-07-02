@@ -91,6 +91,7 @@ const createClient = asyncHandler(async (req, res, next) => {
     nomineeResidency,
     assignedAgent,
     tier,
+    contractStartDate,
     contractEndDate,
     agentCommission,
     kycStatus,
@@ -99,9 +100,10 @@ const createClient = asyncHandler(async (req, res, next) => {
   } = req.body;
 
   const finalTier = tier || 'SILVER';
-  let finalContractEndDate = contractEndDate;
+  let finalContractStartDate = contractStartDate ? new Date(contractStartDate) : new Date();
+  let finalContractEndDate = contractEndDate ? new Date(contractEndDate) : null;
   if (!finalContractEndDate) {
-    const d = new Date();
+    const d = new Date(finalContractStartDate);
     d.setFullYear(d.getFullYear() + 2);
     finalContractEndDate = d;
   }
@@ -209,6 +211,7 @@ const createClient = asyncHandler(async (req, res, next) => {
       status: 'active',
       kycStatus: kycStatus || 'PENDING',
       tier: finalTier,
+      contractStartDate: finalContractStartDate,
       contractEndDate: finalContractEndDate,
       agentCommission: finalAgentCommission,
       portalPassword: tempPassword,
@@ -391,6 +394,7 @@ const updateClient = asyncHandler(async (req, res, next) => {
     'nomineeResidency',
     'status',
     'tier',
+    'contractStartDate',
     'contractEndDate',
     'agentCommission',
     'kycStatus',
