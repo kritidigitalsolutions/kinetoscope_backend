@@ -4,7 +4,7 @@ const AgentProfile = require('../../models/AgentProfile.model');
 const ClientProfile = require('../../models/ClientProfile.model');
 const Investment = require('../../models/Investment.model');
 const AgentCommission = require('../../models/AgentCommission.model');
-const { uploadToFirebase, deleteFromFirebase } = require('../../services/firebase.service');
+const { deleteFromCloudinary } = require('../../services/cloudinary.service');
 const { sendWelcomeEmail } = require('../../services/email.service');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
@@ -32,15 +32,15 @@ const cleanupLocalFiles = (files) => {
 };
 
 /**
- * Cleanup helper to remove uploaded files from Firebase storage in case of db rollback
+ * Cleanup helper to remove uploaded files from Cloudinary storage in case of db rollback
  */
-const deleteFirebaseFiles = async (urls) => {
+const deleteCloudinaryFiles = async (urls) => {
   for (const url of urls) {
     if (url) {
       try {
-        await deleteFromFirebase(url);
+        await deleteFromCloudinary(url);
       } catch (err) {
-        console.error(`[Cleanup] Failed to purge file ${url} from Firebase Storage:`, err.message);
+        console.error(`[Cleanup] Failed to purge file ${url} from Cloudinary:`, err.message);
       }
     }
   }
@@ -123,29 +123,21 @@ const createAgent = asyncHandler(async (req, res, next) => {
   let panDocument, idProofDocument, bankProofDocument, nomineeProofDocument;
 
   try {
-    // 5) Upload files sequentially to Firebase Storage
-    const panPath = `agents/${agentCode}/panDocument_${Date.now()}`;
-    panDocument = await uploadToFirebase(req.files.panDocument[0].path, panPath);
+    // Assign Cloudinary URLs directly from Multer upload results
+    panDocument = req.files.panDocument[0].path;
     uploadedUrls.push(panDocument);
 
-    const idProofPath = `agents/${agentCode}/idProofDocument_${Date.now()}`;
-    idProofDocument = await uploadToFirebase(req.files.idProofDocument[0].path, idProofPath);
+    idProofDocument = req.files.idProofDocument[0].path;
     uploadedUrls.push(idProofDocument);
 
-    const bankProofPath = `agents/${agentCode}/bankProofDocument_${Date.now()}`;
-    bankProofDocument = await uploadToFirebase(req.files.bankProofDocument[0].path, bankProofPath);
+    bankProofDocument = req.files.bankProofDocument[0].path;
     uploadedUrls.push(bankProofDocument);
 
-    const nomineeProofPath = `agents/${agentCode}/nomineeProofDocument_${Date.now()}`;
-    nomineeProofDocument = await uploadToFirebase(req.files.nomineeProofDocument[0].path, nomineeProofPath);
+    nomineeProofDocument = req.files.nomineeProofDocument[0].path;
     uploadedUrls.push(nomineeProofDocument);
-
-    // After uploading, purge local file copies
-    cleanupLocalFiles(req.files);
   } catch (error) {
-    cleanupLocalFiles(req.files);
-    await deleteFirebaseFiles(uploadedUrls);
-    return next(new AppError(`Document upload failed: ${error.message}`, 500));
+    await deleteCloudinaryFiles(uploadedUrls);
+    return next(new AppError(`Document upload processing failed: ${error.message}`, 500));
   }
 
   // Define database variables outside to perform rollback on error
@@ -196,7 +188,7 @@ const createAgent = asyncHandler(async (req, res, next) => {
     if (createdUser) {
       await User.findByIdAndDelete(createdUser._id);
     }
-    await deleteFirebaseFiles(uploadedUrls);
+    await deleteCloudinaryFiles(uploadedUrls);
     return next(new AppError(`Database transaction failed: ${dbError.message}`, 500));
   }
 
@@ -261,29 +253,70 @@ const getAllAgents = asyncHandler(async (req, res, next) => {
 
   const total = await User.countDocuments(userQuery);
 
-  const agentRecords = [];
-  for (const user of users) {
-    const profile = await AgentProfile.findOne({ userId: user._id });
+  const agentIds = users.map(u => u._id);
 
-    // Fetch clients assigned to this agent
-    const clients = await User.find({ role: ROLES.CLIENT, assignedAgent: user._id }, { _id: 1 });
-    const clientIds = clients.map(c => c._id);
-    const clientsCount = clientIds.length;
+  // 1) Fetch agent profiles in bulk
+  const profiles = await AgentProfile.find({ userId: { $in: agentIds } });
+  const profileMap = {};
+  profiles.forEach(p => {
+    profileMap[p.userId.toString()] = p;
+  });
 
-    // Fetch active investments of these clients
-    let totalInvestment = 0;
-    if (clientsCount > 0) {
-      const investments = await Investment.find({ clientId: { $in: clientIds }, status: 'active' }, { investmentAmount: 1 });
-      totalInvestment = investments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
+  // 2) Fetch clients assigned to these agents in bulk
+  const allClients = await User.find(
+    { role: ROLES.CLIENT, assignedAgent: { $in: agentIds } },
+    { _id: 1, assignedAgent: 1 }
+  );
+
+  // Map agent ID to their list of client IDs
+  const agentClientsMap = {};
+  agentIds.forEach(id => {
+    agentClientsMap[id.toString()] = [];
+  });
+  
+  const allClientIds = [];
+  allClients.forEach(c => {
+    if (c.assignedAgent) {
+      const agentIdStr = c.assignedAgent.toString();
+      if (agentClientsMap[agentIdStr]) {
+        agentClientsMap[agentIdStr].push(c._id.toString());
+      }
+      allClientIds.push(c._id);
     }
+  });
 
-    agentRecords.push({
+  // 3) Fetch active investments in bulk
+  let investmentMap = {}; // Maps clientId -> sum of active investment amounts
+  if (allClientIds.length > 0) {
+    const investments = await Investment.find(
+      { clientId: { $in: allClientIds }, status: 'active' },
+      { clientId: 1, investmentAmount: 1 }
+    );
+    investments.forEach(inv => {
+      const clientIdStr = inv.clientId.toString();
+      investmentMap[clientIdStr] = (investmentMap[clientIdStr] || 0) + inv.investmentAmount;
+    });
+  }
+
+  // 4) Assemble final records
+  const agentRecords = users.map(user => {
+    const userIdStr = user._id.toString();
+    const profile = profileMap[userIdStr] || null;
+    const clientIdsForAgent = agentClientsMap[userIdStr] || [];
+    const clientsCount = clientIdsForAgent.length;
+    
+    let totalInvestment = 0;
+    clientIdsForAgent.forEach(cid => {
+      totalInvestment += (investmentMap[cid] || 0);
+    });
+
+    return {
       user,
       profile,
       clientsCount,
       totalInvestment,
-    });
-  }
+    };
+  });
 
   res.status(200).json({
     success: true,
@@ -414,27 +447,24 @@ const updateAgent = asyncHandler(async (req, res, next) => {
     if (req.files) {
       for (const field of fileFields) {
         if (req.files[field] && req.files[field].length > 0) {
-          // Delete old document from Firebase if it exists
+          // Delete old document from Cloudinary if it exists
           if (profile[field]) {
             try {
-              await deleteFromFirebase(profile[field]);
+              await deleteFromCloudinary(profile[field]);
             } catch (err) {
-              console.error(`[Cleanup] Failed to delete old file ${profile[field]} from Firebase:`, err.message);
+              console.error(`[Cleanup] Failed to delete old file ${profile[field]} from Cloudinary:`, err.message);
             }
           }
 
-          // Upload new document
-          const pathInBucket = `agents/${user.clientCode}/${field}_${Date.now()}`;
-          const newUrl = await uploadToFirebase(req.files[field][0].path, pathInBucket);
+          // Assign new Cloudinary URL directly
+          const newUrl = req.files[field][0].path;
           profileUpdates[field] = newUrl;
           uploadedUrls.push(newUrl);
         }
       }
-      cleanupLocalFiles(req.files);
     }
   } catch (uploadError) {
-    cleanupLocalFiles(req.files);
-    await deleteFirebaseFiles(uploadedUrls);
+    await deleteCloudinaryFiles(uploadedUrls);
     return next(new AppError(`Document upload failed: ${uploadError.message}`, 500));
   }
 
@@ -470,7 +500,7 @@ const deleteAgent = asyncHandler(async (req, res, next) => {
 
   const profile = await AgentProfile.findOne({ userId });
 
-  // 1) Purge documents from Firebase storage if they exist
+  // 1) Purge documents from Cloudinary storage if they exist
   if (profile) {
     const documentsToPurge = [
       profile.panDocument,
@@ -478,7 +508,7 @@ const deleteAgent = asyncHandler(async (req, res, next) => {
       profile.bankProofDocument,
       profile.nomineeProofDocument,
     ];
-    await deleteFirebaseFiles(documentsToPurge);
+    await deleteCloudinaryFiles(documentsToPurge);
     await AgentProfile.findByIdAndDelete(profile._id);
   }
 
@@ -510,27 +540,44 @@ const getAgentClients = asyncHandler(async (req, res, next) => {
     return next(new AppError('Agent account not found.', 404));
   }
 
+  // Fetch agent profile once outside the loop
+  const agentProfile = await AgentProfile.findOne({ userId: agentId });
+  const monthlySlabStr = (agentProfile && agentProfile.monthlySlab) ? agentProfile.monthlySlab.replace('%', '') : '0.5';
+  const monthlySlabPct = parseFloat(monthlySlabStr) || 0.5;
+  const months = 3;
+
   // 2) Find all clients assigned to this agent
   const clients = await User.find({ role: ROLES.CLIENT, assignedAgent: agentId }).sort({ createdAt: -1 });
+  const clientIds = clients.map(c => c._id);
 
-  const clientRecords = [];
-  for (const client of clients) {
-    const profile = await ClientProfile.findOne({ userId: client._id });
-    
-    // Get total investment for the client
-    const investments = await Investment.find({ clientId: client._id, status: 'active' });
-    const totalInvestment = investments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
+  // Bulk fetch profiles
+  const profiles = await ClientProfile.find({ userId: { $in: clientIds } });
+  const profileMap = {};
+  profiles.forEach(p => {
+    profileMap[p.userId.toString()] = p;
+  });
 
-    // Calculate commission paid (based on agent monthly slab % and active investment)
-    const agentProfile = await AgentProfile.findOne({ userId: agentId });
-    const monthlySlabStr = (agentProfile && agentProfile.monthlySlab) ? agentProfile.monthlySlab.replace('%', '') : '0.5';
-    const monthlySlabPct = parseFloat(monthlySlabStr) || 0.5;
+  // Bulk fetch investments
+  const investments = await Investment.find({ clientId: { $in: clientIds }, status: 'active' });
+  const investmentsMap = {};
+  clientIds.forEach(id => {
+    investmentsMap[id.toString()] = [];
+  });
+  investments.forEach(inv => {
+    const cidStr = inv.clientId.toString();
+    if (investmentsMap[cidStr]) {
+      investmentsMap[cidStr].push(inv);
+    }
+  });
 
-    // Use a mock of 3 months payout for calculation of total paid commission so far
-    const months = 3;
+  const clientRecords = clients.map(client => {
+    const profile = profileMap[client._id.toString()];
+    const clientInvestments = investmentsMap[client._id.toString()] || [];
+    const totalInvestment = clientInvestments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
+
     const commissionPaid = totalInvestment * (monthlySlabPct / 100) * months;
 
-    clientRecords.push({
+    return {
       clientId: client.clientCode || '',
       id: client._id,
       name: client.name,
@@ -541,8 +588,8 @@ const getAgentClients = asyncHandler(async (req, res, next) => {
       roi: profile ? profile.monthlyRoi : 1.2,
       commissionPaid: Math.round(commissionPaid),
       status: profile ? profile.status : 'active',
-    });
-  }
+    };
+  });
 
   res.status(200).json({
     success: true,

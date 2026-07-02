@@ -78,6 +78,15 @@ const createClientValidationRules = [
   body('accountNumber')
     .trim()
     .notEmpty().withMessage('Account number is required'),
+  body('confirmAccountNumber')
+    .trim()
+    .notEmpty().withMessage('Confirm account number is required')
+    .custom((value, { req }) => {
+      if (value !== req.body.accountNumber) {
+        throw new Error('Account number and confirm account number must match');
+      }
+      return true;
+    }),
   body('ifscCode')
     .trim()
     .notEmpty().withMessage('IFSC / SWIFT code is required')
@@ -242,7 +251,22 @@ const updateClientRulesByAdmin = [
   body('accountNumber')
     .optional()
     .trim()
-    .notEmpty().withMessage('Account number cannot be empty'),
+    .notEmpty().withMessage('Account number cannot be empty')
+    .custom((value, { req }) => {
+      if (value && value !== req.body.confirmAccountNumber) {
+        throw new Error('Account number and confirm account number must match');
+      }
+      return true;
+    }),
+  body('confirmAccountNumber')
+    .optional()
+    .trim()
+    .custom((value, { req }) => {
+      if (req.body.accountNumber && value !== req.body.accountNumber) {
+        throw new Error('Account number and confirm account number must match');
+      }
+      return true;
+    }),
   body('ifscCode')
     .optional()
     .trim()

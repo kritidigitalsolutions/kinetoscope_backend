@@ -2,7 +2,7 @@ const fs = require('fs');
 const mongoose = require('mongoose');
 const User = require('../../models/User.model');
 const ClientProfile = require('../../models/ClientProfile.model');
-const { uploadToFirebase, deleteFromFirebase } = require('../../services/firebase.service');
+const { deleteFromCloudinary } = require('../../services/cloudinary.service');
 const { sendWelcomeEmail } = require('../../services/email.service');
 const { calculateDashboardData } = require('../client/client-dashboard.controller');
 const AppError = require('../../utils/AppError');
@@ -31,15 +31,15 @@ const cleanupLocalFiles = (files) => {
 };
 
 /**
- * Cleanup helper to remove uploaded files from Firebase storage in case of db rollback
+ * Cleanup helper to remove uploaded files from Cloudinary storage in case of db rollback
  */
-const deleteFirebaseFiles = async (urls) => {
+const deleteCloudinaryFiles = async (urls) => {
   for (const url of urls) {
     if (url) {
       try {
-        await deleteFromFirebase(url);
+        await deleteFromCloudinary(url);
       } catch (err) {
-        console.error(`[Cleanup] Failed to purge file ${url} from Firebase Storage:`, err.message);
+        console.error(`[Cleanup] Failed to purge file ${url} from Cloudinary:`, err.message);
       }
     }
   }
@@ -143,33 +143,24 @@ const createClient = asyncHandler(async (req, res, next) => {
   let panDocument, aadhaarDocument, bankProofDocument, agreementDocument, nomineeProofDocument;
 
   try {
-    // 5) Upload files sequentially to Firebase Storage
-    const panPath = `clients/${clientCode}/panDocument_${Date.now()}`;
-    panDocument = await uploadToFirebase(req.files.panDocument[0].path, panPath);
+    // Assign Cloudinary URLs directly from Multer upload results
+    panDocument = req.files.panDocument[0].path;
     uploadedUrls.push(panDocument);
 
-    const aadhaarPath = `clients/${clientCode}/aadhaarDocument_${Date.now()}`;
-    aadhaarDocument = await uploadToFirebase(req.files.aadhaarDocument[0].path, aadhaarPath);
+    aadhaarDocument = req.files.aadhaarDocument[0].path;
     uploadedUrls.push(aadhaarDocument);
 
-    const bankProofPath = `clients/${clientCode}/bankProofDocument_${Date.now()}`;
-    bankProofDocument = await uploadToFirebase(req.files.bankProofDocument[0].path, bankProofPath);
+    bankProofDocument = req.files.bankProofDocument[0].path;
     uploadedUrls.push(bankProofDocument);
 
-    const agreementPath = `clients/${clientCode}/agreementDocument_${Date.now()}`;
-    agreementDocument = await uploadToFirebase(req.files.agreementDocument[0].path, agreementPath);
+    agreementDocument = req.files.agreementDocument[0].path;
     uploadedUrls.push(agreementDocument);
 
-    const nomineeProofPath = `clients/${clientCode}/nomineeProofDocument_${Date.now()}`;
-    nomineeProofDocument = await uploadToFirebase(req.files.nomineeProofDocument[0].path, nomineeProofPath);
+    nomineeProofDocument = req.files.nomineeProofDocument[0].path;
     uploadedUrls.push(nomineeProofDocument);
-
-    // After uploading, purge local file copies
-    cleanupLocalFiles(req.files);
   } catch (error) {
-    cleanupLocalFiles(req.files);
-    await deleteFirebaseFiles(uploadedUrls);
-    return next(new AppError(`Document upload failed: ${error.message}`, 500));
+    await deleteCloudinaryFiles(uploadedUrls);
+    return next(new AppError(`Document upload processing failed: ${error.message}`, 500));
   }
 
   // Define database variables outside to perform rollback on error
@@ -227,7 +218,7 @@ const createClient = asyncHandler(async (req, res, next) => {
     if (createdUser) {
       await User.findByIdAndDelete(createdUser._id);
     }
-    await deleteFirebaseFiles(uploadedUrls);
+    await deleteCloudinaryFiles(uploadedUrls);
     return next(new AppError(`Database transaction failed: ${dbError.message}`, 500));
   }
 
@@ -294,14 +285,18 @@ const getAllClients = asyncHandler(async (req, res, next) => {
 
   const total = await User.countDocuments(userQuery);
 
-  const clientRecords = [];
-  for (const user of users) {
-    const profile = await ClientProfile.findOne({ userId: user._id });
-    clientRecords.push({
-      user,
-      profile,
-    });
-  }
+  const userIds = users.map(u => u._id);
+  const profiles = await ClientProfile.find({ userId: { $in: userIds } });
+  
+  const profileMap = {};
+  profiles.forEach(p => {
+    profileMap[p.userId.toString()] = p;
+  });
+
+  const clientRecords = users.map(user => ({
+    user,
+    profile: profileMap[user._id.toString()] || null
+  }));
 
   res.status(200).json({
     success: true,
@@ -428,27 +423,24 @@ const updateClient = asyncHandler(async (req, res, next) => {
     if (req.files) {
       for (const field of fileFields) {
         if (req.files[field] && req.files[field].length > 0) {
-          // Delete old document from Firebase if it exists
+          // Delete old document from Cloudinary if it exists
           if (profile[field]) {
             try {
-              await deleteFromFirebase(profile[field]);
+              await deleteFromCloudinary(profile[field]);
             } catch (err) {
-              console.error(`[Cleanup] Failed to delete old file ${profile[field]} from Firebase:`, err.message);
+              console.error(`[Cleanup] Failed to delete old file ${profile[field]} from Cloudinary:`, err.message);
             }
           }
 
-          // Upload new document
-          const pathInBucket = `clients/${user.clientCode}/${field}_${Date.now()}`;
-          const newUrl = await uploadToFirebase(req.files[field][0].path, pathInBucket);
+          // Assign new Cloudinary URL directly
+          const newUrl = req.files[field][0].path;
           profileUpdates[field] = newUrl;
           uploadedUrls.push(newUrl);
         }
       }
-      cleanupLocalFiles(req.files);
     }
   } catch (uploadError) {
-    cleanupLocalFiles(req.files);
-    await deleteFirebaseFiles(uploadedUrls);
+    await deleteCloudinaryFiles(uploadedUrls);
     return next(new AppError(`Document upload failed: ${uploadError.message}`, 500));
   }
 
@@ -484,7 +476,7 @@ const deleteClient = asyncHandler(async (req, res, next) => {
 
   const profile = await ClientProfile.findOne({ userId });
 
-  // 1) Purge documents from Firebase storage if they exist
+  // 1) Purge documents from Cloudinary storage if they exist
   if (profile) {
     const documentsToPurge = [
       profile.panDocument,
@@ -493,7 +485,7 @@ const deleteClient = asyncHandler(async (req, res, next) => {
       profile.agreementDocument,
       profile.nomineeProofDocument,
     ];
-    await deleteFirebaseFiles(documentsToPurge);
+    await deleteCloudinaryFiles(documentsToPurge);
     await ClientProfile.findByIdAndDelete(profile._id);
   }
 

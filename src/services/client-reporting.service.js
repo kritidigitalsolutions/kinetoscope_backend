@@ -70,10 +70,32 @@ const getManageClientsData = async ({
   const users = await query.sort({ createdAt: -1 });
   const total = await User.countDocuments(userQuery);
 
-  const clientsData = [];
-  for (const user of users) {
-    const profile = await ClientProfile.findOne({ userId: user._id });
-    const investments = await Investment.find({ clientId: user._id });
+  const userIds = users.map(u => u._id);
+
+  // Fetch client profiles in bulk
+  const profiles = await ClientProfile.find({ userId: { $in: userIds } });
+  const profileMap = {};
+  profiles.forEach(p => {
+    profileMap[p.userId.toString()] = p;
+  });
+
+  // Fetch all investments for these clients in bulk
+  const allInvestments = await Investment.find({ clientId: { $in: userIds } });
+  const investmentsMap = {};
+  userIds.forEach(id => {
+    investmentsMap[id.toString()] = [];
+  });
+  allInvestments.forEach(inv => {
+    const cidStr = inv.clientId.toString();
+    if (investmentsMap[cidStr]) {
+      investmentsMap[cidStr].push(inv);
+    }
+  });
+
+  const clientsData = users.map(user => {
+    const userIdStr = user._id.toString();
+    const profile = profileMap[userIdStr] || null;
+    const investments = investmentsMap[userIdStr] || [];
 
     // Compute total investment (excluding cancelled status)
     const validInvestments = investments.filter(inv => inv.status !== 'cancelled');
@@ -90,7 +112,7 @@ const getManageClientsData = async ({
       roiPercentage = Number((roiSum / validInvestments.length).toFixed(2));
     }
 
-    clientsData.push({
+    return {
       clientId: user.clientCode || '',
       joinDate: user.createdAt,
       contractEndDate: profile ? profile.contractEndDate : null,
@@ -98,15 +120,15 @@ const getManageClientsData = async ({
       email: user.email,
       totalInvestment,
       roiPercentage,
-      monthlyRoi: profile ? (profile.monthlyRoi || 1.2) : 1.2,
+      monthlyRoi: profile ? (profile.monthlyRoi !== undefined ? profile.monthlyRoi : 1.2) : 1.2,
       tier: profile ? (profile.tier || 'SILVER') : 'SILVER',
       assignedAgent: user.assignedAgent ? user.assignedAgent.name : 'N/A',
       agentCommission: profile ? (profile.agentCommission || '0.5% monthly') : '0.5% monthly',
       riskProfile: profile ? (profile.riskProfile || 'moderate').toUpperCase() : 'MODERATE',
       residencyStatus: profile ? (profile.residencyStatus || 'National (Domestic)') : 'National (Domestic)',
       status: profile ? (profile.status || 'active').toUpperCase() : 'ACTIVE',
-    });
-  }
+    };
+  });
 
   return { clients: clientsData, total };
 };

@@ -57,13 +57,18 @@ const listClientAccounts = asyncHandler(async (req, res, next) => {
 
   const total = await User.countDocuments(userQuery);
 
-  // Enrich each user record with their ClientProfile details
-  const clients = [];
-  for (const user of users) {
-    const profile = await ClientProfile.findOne({ userId: user._id })
-      .select('status portalPassword residencyStatus tier');
+  const userIds = users.map(u => u._id);
+  const profiles = await ClientProfile.find({ userId: { $in: userIds } })
+    .select('userId status portalPassword residencyStatus tier');
 
-    clients.push({
+  const profileMap = {};
+  profiles.forEach(p => {
+    profileMap[p.userId.toString()] = p;
+  });
+
+  const clients = users.map(user => {
+    const profile = profileMap[user._id.toString()];
+    return {
       _id: user._id,
       clientCode: user.clientCode,
       name: user.name,
@@ -75,8 +80,8 @@ const listClientAccounts = asyncHandler(async (req, res, next) => {
       isActive: user.isActive,
       lastLogin: user.lastLogin,
       createdAt: user.createdAt,
-    });
-  }
+    };
+  });
 
   res.status(200).json({
     success: true,
