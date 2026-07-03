@@ -15,7 +15,7 @@ const agentCommissionSchema = new mongoose.Schema(
       required: [true, 'Period is required'],
     },
     date: {
-      type: String, // e.g. "31/01/2025", "15/01/2024"
+      type: Date, // Date object (serialized as ISO string in API responses)
       required: [true, 'Date is required'],
     },
     type: {

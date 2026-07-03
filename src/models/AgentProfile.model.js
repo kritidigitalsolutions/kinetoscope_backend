@@ -97,22 +97,31 @@ const agentProfileSchema = new mongoose.Schema(
         message: 'Please provide a valid IFSC code',
       },
     },
-    // Documents (Stored on Firebase Storage)
+    // Documents (Stored on Cloudinary — populated asynchronously after initial save)
     panDocument: {
       type: String,
-      required: [true, 'PAN document URL is required'],
+      default: '',
     },
     idProofDocument: {
       type: String,
-      required: [true, 'ID proof document URL is required'],
+      default: '',
     },
     bankProofDocument: {
       type: String,
-      required: [true, 'Bank proof document URL is required'],
+      default: '',
     },
     nomineeProofDocument: {
       type: String,
-      required: [true, 'Nominee proof document URL is required'],
+      default: '',
+    },
+    // Tracks whether background Cloudinary upload is complete
+    documentStatus: {
+      type: String,
+      enum: {
+        values: ['pending_upload', 'uploaded', 'upload_failed'],
+        message: 'Document status must be pending_upload, uploaded, or upload_failed',
+      },
+      default: 'pending_upload',
     },
     // Commission Configuration
     oneTimeCommission: {

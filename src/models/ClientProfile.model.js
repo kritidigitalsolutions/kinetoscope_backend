@@ -156,26 +156,35 @@ const clientProfileSchema = new mongoose.Schema(
       },
       default: 'National (Domestic)',
     },
-    // Document URLs (Stored on Firebase Storage)
+    // Document URLs (Stored on Cloudinary — populated asynchronously after initial save)
     panDocument: {
       type: String,
-      required: [true, 'PAN document URL is required'],
+      default: '',
     },
     aadhaarDocument: {
       type: String,
-      required: [true, 'Aadhaar document URL is required'],
+      default: '',
     },
     bankProofDocument: {
       type: String,
-      required: [true, 'Bank proof document URL is required'],
+      default: '',
     },
     agreementDocument: {
       type: String,
-      required: [true, 'Agreement document URL is required'],
+      default: '',
     },
     nomineeProofDocument: {
       type: String,
-      required: [true, 'Nominee proof document URL is required'],
+      default: '',
+    },
+    // Tracks whether background Cloudinary upload is complete
+    documentStatus: {
+      type: String,
+      enum: {
+        values: ['pending_upload', 'uploaded', 'upload_failed'],
+        message: 'Document status must be pending_upload, uploaded, or upload_failed',
+      },
+      default: 'pending_upload',
     },
     // Per-document verification status (Super Admin verifies each individually)
     panDocumentVerified: {

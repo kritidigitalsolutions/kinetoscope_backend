@@ -4,7 +4,7 @@ const AgentProfile = require('../../models/AgentProfile.model');
 const ClientProfile = require('../../models/ClientProfile.model');
 const Investment = require('../../models/Investment.model');
 const AgentCommission = require('../../models/AgentCommission.model');
-const { deleteFromCloudinary } = require('../../services/cloudinary.service');
+const { deleteFromCloudinary, processDocumentUploadsInBackground } = require('../../services/cloudinary.service');
 const { sendWelcomeEmail } = require('../../services/email.service');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
@@ -119,27 +119,6 @@ const createAgent = asyncHandler(async (req, res, next) => {
   // 4) Use provided custom password or generate a secure temporary password
   const tempPassword = password || portalPassword || generateTempPassword();
 
-  const uploadedUrls = [];
-  let panDocument, idProofDocument, bankProofDocument, nomineeProofDocument;
-
-  try {
-    // Assign Cloudinary URLs directly from Multer upload results
-    panDocument = req.files.panDocument[0].path;
-    uploadedUrls.push(panDocument);
-
-    idProofDocument = req.files.idProofDocument[0].path;
-    uploadedUrls.push(idProofDocument);
-
-    bankProofDocument = req.files.bankProofDocument[0].path;
-    uploadedUrls.push(bankProofDocument);
-
-    nomineeProofDocument = req.files.nomineeProofDocument[0].path;
-    uploadedUrls.push(nomineeProofDocument);
-  } catch (error) {
-    await deleteCloudinaryFiles(uploadedUrls);
-    return next(new AppError(`Document upload processing failed: ${error.message}`, 500));
-  }
-
   // Define database variables outside to perform rollback on error
   let createdUser, createdProfile;
 
@@ -176,24 +155,34 @@ const createAgent = asyncHandler(async (req, res, next) => {
       nomineePhone,
       nomineeEmail,
       nomineeResidency: nomineeResidency || 'National (Domestic)',
-      panDocument,
-      idProofDocument,
-      bankProofDocument,
-      nomineeProofDocument,
+      panDocument: '', // Populated in background
+      idProofDocument: '', // Populated in background
+      bankProofDocument: '', // Populated in background
+      nomineeProofDocument: '', // Populated in background
+      documentStatus: 'pending_upload',
       status: status || 'active',
       portalPassword: tempPassword,
     });
   } catch (dbError) {
-    // Rollback: Delete user and profile if either creation fails
+    // Rollback: Delete user if created user profile creation fails
     if (createdUser) {
       await User.findByIdAndDelete(createdUser._id);
     }
-    await deleteCloudinaryFiles(uploadedUrls);
+    cleanupLocalFiles(req.files);
     return next(new AppError(`Database transaction failed: ${dbError.message}`, 500));
   }
 
+  // 8) Trigger background Cloudinary upload
+  processDocumentUploadsInBackground({
+    files: req.files,
+    fileFields,
+    Model: AgentProfile,
+    filter: { userId: createdUser._id },
+    entityLabel: 'Agent',
+  });
+
   try {
-    // 8) Send Welcome Email containing credentials
+    // 9) Send Welcome Email containing credentials
     const loginUrl = process.env.AGENT_PORTAL_URL || 'http://localhost:5173/agent/login';
     await sendWelcomeEmail(email, fullName, agentCode, tempPassword, loginUrl);
   } catch (emailError) {
@@ -205,7 +194,7 @@ const createAgent = asyncHandler(async (req, res, next) => {
 
   res.status(201).json({
     success: true,
-    message: 'Agent onboarding completed successfully. Welcome email sent.',
+    message: 'Agent onboarding initiated. Documents are being uploaded in the background. Welcome email sent.',
     data: {
       user: createdUser,
       profile: createdProfile,
@@ -625,13 +614,13 @@ const getAgentCommissions = asyncHandler(async (req, res, next) => {
   // 3) If no records exist, auto-seed realistic mock data to match screens
   if (commissions.length === 0) {
     const mockData = [
-      { agentId, period: 'Jan 2025', date: '31/01/2025', type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Feb 2025', date: '28/02/2025', type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Mar 2025', date: '31/03/2025', type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Apr 2025', date: '30/04/2025', type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'May 2025', date: '31/05/2025', type: 'MONTHLY', amount: 33750, status: 'PENDING', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Onboarding', date: '15/01/2024', type: 'ONE TIME', amount: 900000, status: 'PAID', remarks: 'One-time onboarding bonus' },
-      { agentId, period: 'Special Campaign', date: '10/08/2025', type: 'SPECIAL', amount: 16250, status: 'PAID', remarks: 'Independence Day special bonus' },
+      { agentId, period: 'Jan 2025', date: new Date('2025-01-31'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
+      { agentId, period: 'Feb 2025', date: new Date('2025-02-28'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
+      { agentId, period: 'Mar 2025', date: new Date('2025-03-31'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
+      { agentId, period: 'Apr 2025', date: new Date('2025-04-30'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
+      { agentId, period: 'May 2025', date: new Date('2025-05-31'), type: 'MONTHLY', amount: 33750, status: 'PENDING', remarks: 'Monthly commission payout' },
+      { agentId, period: 'Jan 2024', date: new Date('2024-01-15'), type: 'ONE TIME', amount: 900000, status: 'PAID', remarks: 'One-time onboarding bonus' },
+      { agentId, period: 'Aug 2025', date: new Date('2025-08-10'), type: 'SPECIAL', amount: 16250, status: 'PAID', remarks: 'Independence Day special bonus' },
     ];
     commissions = await AgentCommission.create(mockData);
   }

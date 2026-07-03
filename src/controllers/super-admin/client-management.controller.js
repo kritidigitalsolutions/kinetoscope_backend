@@ -2,7 +2,7 @@ const fs = require('fs');
 const mongoose = require('mongoose');
 const User = require('../../models/User.model');
 const ClientProfile = require('../../models/ClientProfile.model');
-const { deleteFromCloudinary } = require('../../services/cloudinary.service');
+const { deleteFromCloudinary, processDocumentUploadsInBackground } = require('../../services/cloudinary.service');
 const { sendWelcomeEmail } = require('../../services/email.service');
 const { calculateDashboardData } = require('../client/client-dashboard.controller');
 const AppError = require('../../utils/AppError');
@@ -141,30 +141,6 @@ const createClient = asyncHandler(async (req, res, next) => {
   // 4) Use provided custom password or generate a secure temporary password
   const tempPassword = password || portalPassword || generateTempPassword();
 
-  const uploadedUrls = [];
-  let panDocument, aadhaarDocument, bankProofDocument, agreementDocument, nomineeProofDocument;
-
-  try {
-    // Assign Cloudinary URLs directly from Multer upload results
-    panDocument = req.files.panDocument[0].path;
-    uploadedUrls.push(panDocument);
-
-    aadhaarDocument = req.files.aadhaarDocument[0].path;
-    uploadedUrls.push(aadhaarDocument);
-
-    bankProofDocument = req.files.bankProofDocument[0].path;
-    uploadedUrls.push(bankProofDocument);
-
-    agreementDocument = req.files.agreementDocument[0].path;
-    uploadedUrls.push(agreementDocument);
-
-    nomineeProofDocument = req.files.nomineeProofDocument[0].path;
-    uploadedUrls.push(nomineeProofDocument);
-  } catch (error) {
-    await deleteCloudinaryFiles(uploadedUrls);
-    return next(new AppError(`Document upload processing failed: ${error.message}`, 500));
-  }
-
   // Define database variables outside to perform rollback on error
   let createdUser, createdProfile;
 
@@ -206,11 +182,12 @@ const createClient = asyncHandler(async (req, res, next) => {
       nomineePhone,
       nomineeEmail,
       nomineeResidency: nomineeResidency || 'National (Domestic)',
-      panDocument,
-      aadhaarDocument,
-      bankProofDocument,
-      agreementDocument,
-      nomineeProofDocument,
+      panDocument: '', // Populated in background
+      aadhaarDocument: '', // Populated in background
+      bankProofDocument: '', // Populated in background
+      agreementDocument: '', // Populated in background
+      nomineeProofDocument: '', // Populated in background
+      documentStatus: 'pending_upload',
       status: 'active',
       kycStatus: kycStatus || 'PENDING',
       tier: finalTier,
@@ -222,21 +199,29 @@ const createClient = asyncHandler(async (req, res, next) => {
     console.log('[CreateClient] Step 7: ClientProfile created successfully:', createdProfile._id);
   } catch (dbError) {
     console.error('[CreateClient] DATABASE ERROR:', dbError.message, dbError.stack);
-    // Rollback: Delete user and profile if either creation fails
+    // Rollback: Delete user if created user profile creation fails
     if (createdUser) {
       await User.findByIdAndDelete(createdUser._id);
     }
-    await deleteCloudinaryFiles(uploadedUrls);
+    cleanupLocalFiles(req.files);
     return next(new AppError(`Database transaction failed: ${dbError.message}`, 500));
   }
 
+  // 8) Trigger background Cloudinary upload
+  processDocumentUploadsInBackground({
+    files: req.files,
+    fileFields,
+    Model: ClientProfile,
+    filter: { userId: createdUser._id },
+    entityLabel: 'Client',
+  });
+
   try {
-    // 8) Send Welcome Email containing credentials
+    // 9) Send Welcome Email containing credentials
     const loginUrl = process.env.CLIENT_PORTAL_URL || 'http://localhost:5173/client/login';
     await sendWelcomeEmail(email, fullName, clientCode, tempPassword, loginUrl);
   } catch (emailError) {
     console.error(`Welcome email failed to dispatch to ${email}:`, emailError.message);
-    // Do not fail the request if just email fails, but notify the admin in metadata
   }
 
   // Clear password from return payload
@@ -244,7 +229,7 @@ const createClient = asyncHandler(async (req, res, next) => {
 
   res.status(201).json({
     success: true,
-    message: 'Client onboarding completed successfully. Welcome email sent.',
+    message: 'Client onboarding initiated. Documents are being uploaded in the background. Welcome email sent.',
     data: {
       user: createdUser,
       profile: createdProfile,

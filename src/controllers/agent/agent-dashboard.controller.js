@@ -114,13 +114,13 @@ const getAgentCommissions = asyncHandler(async (req, res, next) => {
   // Auto-seed mock data if empty
   if (commissions.length === 0) {
     const mockData = [
-      { agentId, period: 'Jan 2025', date: '31/01/2025', type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Feb 2025', date: '28/02/2025', type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Mar 2025', date: '31/03/2025', type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Apr 2025', date: '30/04/2025', type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'May 2025', date: '31/05/2025', type: 'MONTHLY', amount: 33750, status: 'PENDING', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Onboarding', date: '15/01/2024', type: 'ONE TIME', amount: 900000, status: 'PAID', remarks: 'One-time onboarding bonus' },
-      { agentId, period: 'Special Campaign', date: '10/08/2025', type: 'SPECIAL', amount: 16250, status: 'PAID', remarks: 'Independence Day special bonus' },
+      { agentId, period: 'Jan 2025', date: new Date('2025-01-31'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
+      { agentId, period: 'Feb 2025', date: new Date('2025-02-28'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
+      { agentId, period: 'Mar 2025', date: new Date('2025-03-31'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
+      { agentId, period: 'Apr 2025', date: new Date('2025-04-30'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
+      { agentId, period: 'May 2025', date: new Date('2025-05-31'), type: 'MONTHLY', amount: 33750, status: 'PENDING', remarks: 'Monthly commission payout' },
+      { agentId, period: 'Jan 2024', date: new Date('2024-01-15'), type: 'ONE TIME', amount: 900000, status: 'PAID', remarks: 'One-time onboarding bonus' },
+      { agentId, period: 'Aug 2025', date: new Date('2025-08-10'), type: 'SPECIAL', amount: 16250, status: 'PAID', remarks: 'Independence Day special bonus' },
     ];
     commissions = await AgentCommission.create(mockData);
   }
