@@ -2,7 +2,7 @@ const fs = require('fs');
 const mongoose = require('mongoose');
 const User = require('../../models/User.model');
 const ClientProfile = require('../../models/ClientProfile.model');
-const { deleteFromCloudinary, processDocumentUploadsInBackground } = require('../../services/cloudinary.service');
+const { deleteFromCloudinary, processDocumentUploadsInBackground, uploadDocumentsToCloudinaryParallel } = require('../../services/cloudinary.service');
 const { sendWelcomeEmail } = require('../../services/email.service');
 const { calculateDashboardData } = require('../client/client-dashboard.controller');
 const AppError = require('../../utils/AppError');
@@ -65,7 +65,6 @@ const createClient = asyncHandler(async (req, res, next) => {
 
   for (const field of fileFields) {
     if (!req.files[field] || req.files[field].length === 0) {
-      cleanupLocalFiles(req.files);
       return next(new AppError(`Required document missing: ${field}`, 400));
     }
   }
@@ -120,7 +119,6 @@ const createClient = asyncHandler(async (req, res, next) => {
   const existingUser = await User.findOne({ email });
   if (existingUser) {
     console.log(`[CreateClient] Duplicate email match found:`, { id: existingUser._id, name: existingUser.name, email: existingUser.email });
-    cleanupLocalFiles(req.files);
     return next(new AppError('Email address is already in use by another account.', 400));
   }
 
@@ -140,6 +138,14 @@ const createClient = asyncHandler(async (req, res, next) => {
 
   // 4) Use provided custom password or generate a secure temporary password
   const tempPassword = password || portalPassword || generateTempPassword();
+
+  // 5) Upload files to Cloudinary in parallel in-memory (Serverless Safe)
+  let documentUrls = {};
+  try {
+    documentUrls = await uploadDocumentsToCloudinaryParallel(req.files, fileFields, 'Client');
+  } catch (uploadError) {
+    return next(new AppError(`Document upload processing failed: ${uploadError.message}`, 500));
+  }
 
   // Define database variables outside to perform rollback on error
   let createdUser, createdProfile;
@@ -182,12 +188,12 @@ const createClient = asyncHandler(async (req, res, next) => {
       nomineePhone,
       nomineeEmail,
       nomineeResidency: nomineeResidency || 'National (Domestic)',
-      panDocument: '', // Populated in background
-      aadhaarDocument: '', // Populated in background
-      bankProofDocument: '', // Populated in background
-      agreementDocument: '', // Populated in background
-      nomineeProofDocument: '', // Populated in background
-      documentStatus: 'pending_upload',
+      panDocument: documentUrls.panDocument || '',
+      aadhaarDocument: documentUrls.aadhaarDocument || '',
+      bankProofDocument: documentUrls.bankProofDocument || '',
+      agreementDocument: documentUrls.agreementDocument || '',
+      nomineeProofDocument: documentUrls.nomineeProofDocument || '',
+      documentStatus: 'uploaded',
       status: 'active',
       kycStatus: kycStatus || 'PENDING',
       tier: finalTier,
@@ -203,21 +209,20 @@ const createClient = asyncHandler(async (req, res, next) => {
     if (createdUser) {
       await User.findByIdAndDelete(createdUser._id);
     }
-    cleanupLocalFiles(req.files);
+    // Delete files from Cloudinary on db failure
+    const urlsToDelete = Object.values(documentUrls).filter(Boolean);
+    for (const url of urlsToDelete) {
+      try {
+        await deleteFromCloudinary(url);
+      } catch (err) {
+        console.error('[CreateClient Cleanup] Failed to delete Cloudinary file:', url, err.message);
+      }
+    }
     return next(new AppError(`Database transaction failed: ${dbError.message}`, 500));
   }
 
-  // 8) Trigger background Cloudinary upload
-  processDocumentUploadsInBackground({
-    files: req.files,
-    fileFields,
-    Model: ClientProfile,
-    filter: { userId: createdUser._id },
-    entityLabel: 'Client',
-  });
-
   try {
-    // 9) Send Welcome Email containing credentials
+    // 8) Send Welcome Email containing credentials
     const loginUrl = process.env.CLIENT_PORTAL_URL || 'http://localhost:5173/client/login';
     await sendWelcomeEmail(email, fullName, clientCode, tempPassword, loginUrl);
   } catch (emailError) {
@@ -229,7 +234,7 @@ const createClient = asyncHandler(async (req, res, next) => {
 
   res.status(201).json({
     success: true,
-    message: 'Client onboarding initiated. Documents are being uploaded in the background. Welcome email sent.',
+    message: 'Client onboarding completed successfully. Welcome email sent.',
     data: {
       user: createdUser,
       profile: createdProfile,

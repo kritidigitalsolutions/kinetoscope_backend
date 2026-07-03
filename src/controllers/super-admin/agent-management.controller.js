@@ -4,7 +4,7 @@ const AgentProfile = require('../../models/AgentProfile.model');
 const ClientProfile = require('../../models/ClientProfile.model');
 const Investment = require('../../models/Investment.model');
 const AgentCommission = require('../../models/AgentCommission.model');
-const { deleteFromCloudinary, processDocumentUploadsInBackground } = require('../../services/cloudinary.service');
+const { deleteFromCloudinary, processDocumentUploadsInBackground, uploadDocumentsToCloudinaryParallel } = require('../../services/cloudinary.service');
 const { sendWelcomeEmail } = require('../../services/email.service');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
@@ -65,7 +65,6 @@ const createAgent = asyncHandler(async (req, res, next) => {
 
   for (const field of fileFields) {
     if (!req.files[field] || req.files[field].length === 0) {
-      cleanupLocalFiles(req.files);
       return next(new AppError(`Required document missing: ${field}`, 400));
     }
   }
@@ -98,7 +97,6 @@ const createAgent = asyncHandler(async (req, res, next) => {
   const existingUser = await User.findOne({ email });
   if (existingUser) {
     console.log(`[CreateAgent] Duplicate email match found:`, { id: existingUser._id, name: existingUser.name, email: existingUser.email });
-    cleanupLocalFiles(req.files);
     return next(new AppError('Email address is already in use by another account.', 400));
   }
 
@@ -118,6 +116,14 @@ const createAgent = asyncHandler(async (req, res, next) => {
 
   // 4) Use provided custom password or generate a secure temporary password
   const tempPassword = password || portalPassword || generateTempPassword();
+
+  // 5) Upload files to Cloudinary in parallel in-memory (Serverless Safe)
+  let documentUrls = {};
+  try {
+    documentUrls = await uploadDocumentsToCloudinaryParallel(req.files, fileFields, 'Agent');
+  } catch (uploadError) {
+    return next(new AppError(`Document upload processing failed: ${uploadError.message}`, 500));
+  }
 
   // Define database variables outside to perform rollback on error
   let createdUser, createdProfile;
@@ -155,11 +161,11 @@ const createAgent = asyncHandler(async (req, res, next) => {
       nomineePhone,
       nomineeEmail,
       nomineeResidency: nomineeResidency || 'National (Domestic)',
-      panDocument: '', // Populated in background
-      idProofDocument: '', // Populated in background
-      bankProofDocument: '', // Populated in background
-      nomineeProofDocument: '', // Populated in background
-      documentStatus: 'pending_upload',
+      panDocument: documentUrls.panDocument || '',
+      idProofDocument: documentUrls.idProofDocument || '',
+      bankProofDocument: documentUrls.bankProofDocument || '',
+      nomineeProofDocument: documentUrls.nomineeProofDocument || '',
+      documentStatus: 'uploaded',
       status: status || 'active',
       portalPassword: tempPassword,
     });
@@ -168,21 +174,20 @@ const createAgent = asyncHandler(async (req, res, next) => {
     if (createdUser) {
       await User.findByIdAndDelete(createdUser._id);
     }
-    cleanupLocalFiles(req.files);
+    // Delete files from Cloudinary on db failure
+    const urlsToDelete = Object.values(documentUrls).filter(Boolean);
+    for (const url of urlsToDelete) {
+      try {
+        await deleteFromCloudinary(url);
+      } catch (err) {
+        console.error('[CreateAgent Cleanup] Failed to delete Cloudinary file:', url, err.message);
+      }
+    }
     return next(new AppError(`Database transaction failed: ${dbError.message}`, 500));
   }
 
-  // 8) Trigger background Cloudinary upload
-  processDocumentUploadsInBackground({
-    files: req.files,
-    fileFields,
-    Model: AgentProfile,
-    filter: { userId: createdUser._id },
-    entityLabel: 'Agent',
-  });
-
   try {
-    // 9) Send Welcome Email containing credentials
+    // 8) Send Welcome Email containing credentials
     const loginUrl = process.env.AGENT_PORTAL_URL || 'http://localhost:5173/agent/login';
     await sendWelcomeEmail(email, fullName, agentCode, tempPassword, loginUrl);
   } catch (emailError) {
@@ -194,7 +199,7 @@ const createAgent = asyncHandler(async (req, res, next) => {
 
   res.status(201).json({
     success: true,
-    message: 'Agent onboarding initiated. Documents are being uploaded in the background. Welcome email sent.',
+    message: 'Agent onboarding completed successfully. Welcome email sent.',
     data: {
       user: createdUser,
       profile: createdProfile,

@@ -89,7 +89,7 @@ const {
   updateClientStatusRules,
 } = require('../../validations/super-admin/client-portal.validation');
 
-const { upload, localUpload } = require('../../middlewares/upload.middleware');
+const { upload, localUpload, memoryUpload } = require('../../middlewares/upload.middleware');
 
 // Configure Multer field parsing for client onboarding documents
 const clientOnboardingUpload = upload.fields([
@@ -100,8 +100,8 @@ const clientOnboardingUpload = upload.fields([
   { name: 'nomineeProofDocument', maxCount: 1 },
 ]);
 
-// Configure Multer field parsing for client onboarding documents (Local temp storage for background upload)
-const localClientOnboardingUpload = localUpload.fields([
+// Configure Multer field parsing for client onboarding documents (Memory storage for parallel serverless safe upload)
+const memoryClientOnboardingUpload = memoryUpload.fields([
   { name: 'panDocument', maxCount: 1 },
   { name: 'aadhaarDocument', maxCount: 1 },
   { name: 'bankProofDocument', maxCount: 1 },
@@ -117,8 +117,8 @@ const agentOnboardingUpload = upload.fields([
   { name: 'nomineeProofDocument', maxCount: 1 },
 ]);
 
-// Configure Multer field parsing for agent onboarding documents (Local temp storage for background upload)
-const localAgentOnboardingUpload = localUpload.fields([
+// Configure Multer field parsing for agent onboarding documents (Memory storage for parallel serverless safe upload)
+const memoryAgentOnboardingUpload = memoryUpload.fields([
   { name: 'panDocument', maxCount: 1 },
   { name: 'idProofDocument', maxCount: 1 },
   { name: 'bankProofDocument', maxCount: 1 },
@@ -139,7 +139,7 @@ router.get('/dashboard/analytics', (req, res) => {
 // 2. Client / Investor Management
 router.route('/clients')
   .get(getAllClients)
-  .post(localClientOnboardingUpload, createClientValidationRules, createClient);
+  .post(memoryClientOnboardingUpload, createClientValidationRules, createClient);
 
 router.get('/clients/manage', getManageClients);
 router.get('/clients/manage/export', exportClientsCSV);
@@ -176,7 +176,7 @@ router.route('/roi')
 // 5. Agent Management
 router.route('/agents')
   .get(getAllAgents)
-  .post(localAgentOnboardingUpload, createAgentValidationRules, createAgent);
+  .post(memoryAgentOnboardingUpload, createAgentValidationRules, createAgent);
 
 router.route('/agents/:id')
   .get(getAgentById)

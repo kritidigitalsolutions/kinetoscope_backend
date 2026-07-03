@@ -115,9 +115,64 @@ const processDocumentUploadsInBackground = ({ files, fileFields, Model, filter, 
     });
 };
 
+/**
+ * Upload a file buffer to Cloudinary and return the secure URL.
+ * @param {Buffer} fileBuffer - Buffer of the file
+ * @param {string} folder - Cloudinary folder name
+ * @returns {Promise<string>} Cloudinary secure URL
+ */
+const uploadBufferToCloudinary = (fileBuffer, folder = 'kinetoscope') => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder, resource_type: 'auto' },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result.secure_url);
+      }
+    );
+    uploadStream.end(fileBuffer);
+  });
+};
+
+/**
+ * Upload multiple in-memory document files to Cloudinary in parallel and return the field URLs mapping.
+ *
+ * @param {Object} files - req.files object from multer (memoryStorage)
+ * @param {string[]} fileFields - Array of field names to process
+ * @param {string} entityLabel - Label for logging
+ * @returns {Promise<Object>} Map of field name -> secure URL
+ */
+const uploadDocumentsToCloudinaryParallel = async (files, fileFields, entityLabel) => {
+  if (!files) return {};
+
+  const uploadPromises = fileFields
+    .filter(field => files[field] && files[field].length > 0)
+    .map(async (field) => {
+      const file = files[field][0];
+      try {
+        console.log(`[${entityLabel} Upload] Starting parallel upload for ${field} (${file.originalname})...`);
+        const url = await uploadBufferToCloudinary(file.buffer);
+        console.log(`[${entityLabel} Upload] Successfully uploaded ${field} to Cloudinary.`);
+        return { field, url };
+      } catch (err) {
+        console.error(`[${entityLabel} Upload] Failed to upload ${field}:`, err.message);
+        throw new Error(`Failed to upload ${field}: ${err.message}`);
+      }
+    });
+
+  const results = await Promise.all(uploadPromises);
+  const urlMap = {};
+  results.forEach(({ field, url }) => {
+    urlMap[field] = url;
+  });
+  return urlMap;
+};
+
 module.exports = {
   deleteFromCloudinary,
   uploadToCloudinary,
   cleanupTempFile,
   processDocumentUploadsInBackground,
+  uploadBufferToCloudinary,
+  uploadDocumentsToCloudinaryParallel,
 };

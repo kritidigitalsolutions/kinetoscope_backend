@@ -54,4 +54,21 @@ const localUpload = multer({
     },
 });
 
-module.exports = { upload, localUpload };
+const memoryUpload = multer({
+    storage: multer.memoryStorage(),
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /jpg|jpeg|png|webp|pdf|docx/;
+        const extName = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimeType = allowedTypes.test(file.mimetype) ||
+            file.mimetype === 'application/pdf' ||
+            file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+            file.mimetype.startsWith('image/');
+        if (extName || mimeType) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only jpg, jpeg, png, webp, pdf, and docx files are allowed.'));
+        }
+    },
+});
+
+module.exports = { upload, localUpload, memoryUpload };
