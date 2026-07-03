@@ -4,7 +4,7 @@ const AgentProfile = require('../../models/AgentProfile.model');
 const ClientProfile = require('../../models/ClientProfile.model');
 const Investment = require('../../models/Investment.model');
 const AgentCommission = require('../../models/AgentCommission.model');
-const { deleteFromCloudinary, processDocumentUploadsInBackground, uploadDocumentsToCloudinaryParallel } = require('../../services/cloudinary.service');
+const { deleteFromCloudinary, processDocumentUploadsInBackground, uploadDocumentsToCloudinaryParallelBackground } = require('../../services/cloudinary.service');
 const { sendWelcomeEmail } = require('../../services/email.service');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
@@ -117,14 +117,6 @@ const createAgent = asyncHandler(async (req, res, next) => {
   // 4) Use provided custom password or generate a secure temporary password
   const tempPassword = password || portalPassword || generateTempPassword();
 
-  // 5) Upload files to Cloudinary in parallel in-memory (Serverless Safe)
-  let documentUrls = {};
-  try {
-    documentUrls = await uploadDocumentsToCloudinaryParallel(req.files, fileFields, 'Agent');
-  } catch (uploadError) {
-    return next(new AppError(`Document upload processing failed: ${uploadError.message}`, 500));
-  }
-
   // Define database variables outside to perform rollback on error
   let createdUser, createdProfile;
 
@@ -161,11 +153,11 @@ const createAgent = asyncHandler(async (req, res, next) => {
       nomineePhone,
       nomineeEmail,
       nomineeResidency: nomineeResidency || 'National (Domestic)',
-      panDocument: documentUrls.panDocument || '',
-      idProofDocument: documentUrls.idProofDocument || '',
-      bankProofDocument: documentUrls.bankProofDocument || '',
-      nomineeProofDocument: documentUrls.nomineeProofDocument || '',
-      documentStatus: 'uploaded',
+      panDocument: '',
+      idProofDocument: '',
+      bankProofDocument: '',
+      nomineeProofDocument: '',
+      documentStatus: 'pending_upload',
       status: status || 'active',
       portalPassword: tempPassword,
     });
@@ -174,20 +166,20 @@ const createAgent = asyncHandler(async (req, res, next) => {
     if (createdUser) {
       await User.findByIdAndDelete(createdUser._id);
     }
-    // Delete files from Cloudinary on db failure
-    const urlsToDelete = Object.values(documentUrls).filter(Boolean);
-    for (const url of urlsToDelete) {
-      try {
-        await deleteFromCloudinary(url);
-      } catch (err) {
-        console.error('[CreateAgent Cleanup] Failed to delete Cloudinary file:', url, err.message);
-      }
-    }
     return next(new AppError(`Database transaction failed: ${dbError.message}`, 500));
   }
 
+  // 8) Trigger parallel in-memory background uploads (Vercel-safe using waitUntil)
+  uploadDocumentsToCloudinaryParallelBackground({
+    files: req.files,
+    fileFields,
+    Model: AgentProfile,
+    filter: { userId: createdUser._id },
+    entityLabel: 'Agent',
+  });
+
   try {
-    // 8) Send Welcome Email containing credentials
+    // 9) Send Welcome Email containing credentials
     const loginUrl = process.env.AGENT_PORTAL_URL || 'http://localhost:5173/agent/login';
     await sendWelcomeEmail(email, fullName, agentCode, tempPassword, loginUrl);
   } catch (emailError) {
@@ -199,7 +191,7 @@ const createAgent = asyncHandler(async (req, res, next) => {
 
   res.status(201).json({
     success: true,
-    message: 'Agent onboarding completed successfully. Welcome email sent.',
+    message: 'Agent onboarding initiated. Documents are uploading in the background.',
     data: {
       user: createdUser,
       profile: createdProfile,

@@ -168,6 +168,63 @@ const uploadDocumentsToCloudinaryParallel = async (files, fileFields, entityLabe
   return urlMap;
 };
 
+const safeWaitUntil = (promise) => {
+  try {
+    const { waitUntil } = require('@vercel/functions');
+    waitUntil(promise);
+    console.log('[WaitUntil] Scheduled background promise on Vercel.');
+  } catch (err) {
+    // Fallback for local development or non-Vercel environments
+    promise.catch(e => console.error('[WaitUntil] Background promise failed locally:', e.message));
+    console.log('[WaitUntil] Scheduled background promise locally.');
+  }
+};
+
+/**
+ * Upload multiple in-memory document files to Cloudinary in parallel (background, non-blocking).
+ * Updates the given Mongoose model document with the uploaded URLs.
+ */
+const uploadDocumentsToCloudinaryParallelBackground = ({ files, fileFields, Model, filter, entityLabel }) => {
+  if (!files) return;
+
+  const uploadPromise = (async () => {
+    const uploadPromises = fileFields
+      .filter(field => files[field] && files[field].length > 0)
+      .map(async (field) => {
+        const file = files[field][0];
+        try {
+          console.log(`[${entityLabel} Background Upload] Starting upload for ${field}...`);
+          const url = await uploadBufferToCloudinary(file.buffer);
+          console.log(`[${entityLabel} Background Upload] Successfully uploaded ${field}.`);
+          return { field, url };
+        } catch (err) {
+          console.error(`[${entityLabel} Background Upload] Failed to upload ${field}:`, err.message);
+          return { field, url: null, error: err.message };
+        }
+      });
+
+    const results = await Promise.all(uploadPromises);
+    const updateFields = {};
+    let hasFailure = false;
+
+    results.forEach(({ field, url, error }) => {
+      if (url) {
+        updateFields[field] = url;
+      } else {
+        hasFailure = true;
+      }
+    });
+
+    // Set document status based on results
+    updateFields.documentStatus = hasFailure ? 'upload_failed' : 'uploaded';
+
+    await Model.findOneAndUpdate(filter, { $set: updateFields });
+    console.log(`[${entityLabel} Background Upload] Process completed. Status: ${updateFields.documentStatus}`);
+  })();
+
+  safeWaitUntil(uploadPromise);
+};
+
 module.exports = {
   deleteFromCloudinary,
   uploadToCloudinary,
@@ -175,4 +232,5 @@ module.exports = {
   processDocumentUploadsInBackground,
   uploadBufferToCloudinary,
   uploadDocumentsToCloudinaryParallel,
+  uploadDocumentsToCloudinaryParallelBackground,
 };
