@@ -207,6 +207,7 @@ const agentProfileSchema = new mongoose.Schema(
 );
 
 // Optimize query performance for agent listing and profile searches
+agentProfileSchema.index({ userId: 1 });
 agentProfileSchema.index({ status: 1 });
 
 const AgentProfile = mongoose.model('AgentProfile', agentProfileSchema);

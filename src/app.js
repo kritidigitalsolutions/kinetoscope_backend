@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const AppError = require('./utils/AppError');
 const globalErrorHandler = require('./middlewares/error.middleware');
@@ -9,6 +10,9 @@ const app = express();
 
 // Set security HTTP headers
 app.use(helmet());
+
+// Compress all responses
+app.use(compression());
 
 
 // Enable CORS
@@ -31,7 +35,8 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true
+  credentials: true,
+  maxAge: 86400 // Cache preflight response for 24 hours (86400 seconds)
 }));
 
 // Body parser, reading data from body into req.body

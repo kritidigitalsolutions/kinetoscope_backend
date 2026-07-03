@@ -28,26 +28,58 @@ const getAgentDashboard = asyncHandler(async (req, res, next) => {
 const getAgentClients = asyncHandler(async (req, res, next) => {
   const agentId = req.user.id;
 
-  const clients = await User.find({ role: ROLES.CLIENT, assignedAgent: agentId }).sort({ createdAt: -1 });
+  // 1) Find all client users assigned to this agent using lean mode
+  const clients = await User.find({ role: ROLES.CLIENT, assignedAgent: agentId }).sort({ createdAt: -1 }).lean();
+  const clientIds = clients.map(c => c._id);
 
-  const clientRecords = [];
-  for (const client of clients) {
-    const profile = await ClientProfile.findOne({ userId: client._id });
-    
-    // Get total investment for the client
-    const investments = await Investment.find({ clientId: client._id, status: 'active' });
-    const totalInvestment = investments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
+  if (clientIds.length === 0) {
+    return res.status(200).json({
+      success: true,
+      count: 0,
+      data: {
+        clients: [],
+      },
+    });
+  }
 
-    // Calculate commission paid
-    const agentProfile = await AgentProfile.findOne({ userId: agentId });
-    const monthlySlabStr = (agentProfile && agentProfile.monthlySlab) ? agentProfile.monthlySlab.replace('%', '') : '0.5';
-    const monthlySlabPct = parseFloat(monthlySlabStr) || 0.5;
+  // 2) Fetch agent profile once outside the loop
+  const agentProfile = await AgentProfile.findOne({ userId: agentId }).lean();
+  const monthlySlabStr = (agentProfile && agentProfile.monthlySlab) ? agentProfile.monthlySlab.replace('%', '') : '0.5';
+  const monthlySlabPct = parseFloat(monthlySlabStr) || 0.5;
+  const months = 3;
 
-    // Use a mock of 3 months payout for calculation of total paid commission so far
-    const months = 3;
+  // 3) Bulk fetch client profiles and active investments in parallel
+  const [profiles, investments] = await Promise.all([
+    ClientProfile.find({ userId: { $in: clientIds } }).lean(),
+    Investment.find({ clientId: { $in: clientIds }, status: 'active' }).lean()
+  ]);
+
+  // 4) Map profiles and investments for O(1) in-memory lookup
+  const profileMap = {};
+  profiles.forEach(p => {
+    profileMap[p.userId.toString()] = p;
+  });
+
+  const investmentsMap = {};
+  clientIds.forEach(id => {
+    investmentsMap[id.toString()] = [];
+  });
+  investments.forEach(inv => {
+    const cidStr = inv.clientId.toString();
+    if (investmentsMap[cidStr]) {
+      investmentsMap[cidStr].push(inv);
+    }
+  });
+
+  // 5) Assemble client records
+  const clientRecords = clients.map(client => {
+    const clientIdStr = client._id.toString();
+    const profile = profileMap[clientIdStr] || null;
+    const clientInvestments = investmentsMap[clientIdStr] || [];
+    const totalInvestment = clientInvestments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
     const commissionPaid = totalInvestment * (monthlySlabPct / 100) * months;
 
-    clientRecords.push({
+    return {
       clientId: client.clientCode || '',
       id: client._id,
       name: client.name,
@@ -58,8 +90,8 @@ const getAgentClients = asyncHandler(async (req, res, next) => {
       roi: profile ? profile.monthlyRoi : 1.2,
       commissionPaid: Math.round(commissionPaid),
       status: profile ? profile.status : 'active',
-    });
-  }
+    };
+  });
 
   res.status(200).json({
     success: true,
