@@ -18,6 +18,15 @@ const {
 } = require('../../controllers/client/client-dashboard.controller');
 
 const {
+  getPublishedArticles,
+  getPublishedArticleById,
+} = require('../../controllers/super-admin/article.controller');
+
+const {
+  getMyPerks,
+} = require('../../controllers/super-admin/perk.controller');
+
+const {
   updateClientProfileRules,
 } = require('../../validations/client/client.validation');
 
@@ -61,5 +70,12 @@ router.get('/documents', getClientDocuments);
 // 6. Settings - Change Password Flow (OTP verified)
 router.post('/settings/change-password/send-otp', sendChangePasswordOtpRules, sendChangePasswordOtpHandler);
 router.post('/settings/change-password/verify-otp', verifyChangePasswordOtpRules, verifyChangePasswordOtp);
+
+// 7. News & Articles (Reader)
+router.get('/articles', getPublishedArticles);
+router.get('/articles/:id', getPublishedArticleById);
+
+// 8. Assigned Perks (Client view)
+router.get('/perks', getMyPerks);
 
 module.exports = router;

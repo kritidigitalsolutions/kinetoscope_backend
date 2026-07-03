@@ -16,6 +16,11 @@ const {
   getAgentDocuments,
 } = require('../../controllers/agent/agent-dashboard.controller');
 
+const {
+  getPublishedArticles,
+  getPublishedArticleById,
+} = require('../../controllers/super-admin/article.controller');
+
 const router = express.Router();
 
 // --- PUBLIC AGENT PORTAL AUTHENTICATION FLOW ---
@@ -57,5 +62,9 @@ const {
 
 router.post('/settings/change-password/send-otp', sendChangePasswordOtpRules, sendChangePasswordOtpHandler);
 router.post('/settings/change-password/verify-otp', verifyChangePasswordOtpRules, verifyChangePasswordOtp);
+
+// 8. News & Articles (Reader)
+router.get('/articles', getPublishedArticles);
+router.get('/articles/:id', getPublishedArticleById);
 
 module.exports = router;

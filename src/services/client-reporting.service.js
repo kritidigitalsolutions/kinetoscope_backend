@@ -59,7 +59,7 @@ const getManageClientsData = async ({
     ];
   }
 
-  let query = User.find(userQuery).populate('assignedAgent', 'name email');
+  let query = User.find(userQuery).populate('assignedAgent', 'name email clientCode');
 
   if (!bypassPagination) {
     const skip = (Number(page) - 1) * Number(limit);
@@ -127,8 +127,14 @@ const getManageClientsData = async ({
       roiPercentage,
       monthlyRoi: profile ? (profile.monthlyRoi !== undefined ? profile.monthlyRoi : 1.2) : 1.2,
       tier: profile ? (profile.tier || 'SILVER') : 'SILVER',
-      assignedAgent: user.assignedAgent ? user.assignedAgent.name : 'N/A',
-      agentCommission: profile ? (profile.agentCommission || '0.5% monthly') : '0.5% monthly',
+      perks: profile ? (profile.tier || 'SILVER') : 'SILVER',
+      assignedAgent: user.assignedAgent ? {
+        _id: user.assignedAgent._id,
+        name: user.assignedAgent.name,
+        email: user.assignedAgent.email,
+        clientCode: user.assignedAgent.clientCode || '',
+      } : null,
+      agentCommission: user.assignedAgent ? (profile && profile.agentCommission ? profile.agentCommission : '0.5% monthly') : '—',
       riskProfile: profile ? (profile.riskProfile || 'moderate').toUpperCase() : 'MODERATE',
       residencyStatus: profile ? (profile.residencyStatus || 'National (Domestic)') : 'National (Domestic)',
       status: profile ? (profile.status || 'active').toUpperCase() : 'ACTIVE',

@@ -386,6 +386,7 @@ const updateClient = asyncHandler(async (req, res, next) => {
     'tier',
     'contractStartDate',
     'contractEndDate',
+    'extendContractDate',
     'agentCommission',
     'kycStatus',
     'panNumber',

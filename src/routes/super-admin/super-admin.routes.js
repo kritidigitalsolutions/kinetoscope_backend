@@ -91,6 +91,35 @@ const {
 
 const { upload, memoryUpload } = require('../../middlewares/upload.middleware');
 
+const {
+  createArticle,
+  getAllArticles,
+  getArticleById,
+  updateArticle,
+  deleteArticle,
+} = require('../../controllers/super-admin/article.controller');
+
+const {
+  createPerk,
+  getAllPerks,
+  updatePerk,
+  deletePerk,
+  assignPerkToClients,
+  getAssignedPerks,
+  unassignPerk,
+} = require('../../controllers/super-admin/perk.controller');
+
+const {
+  createPerkValidationRules,
+  updatePerkValidationRules,
+  assignPerkValidationRules,
+} = require('../../validations/super-admin/perk.validation');
+
+const {
+  createArticleValidationRules,
+  updateArticleValidationRules,
+} = require('../../validations/super-admin/article.validation');
+
 // Configure Multer field parsing for client onboarding documents
 const clientOnboardingUpload = upload.fields([
   { name: 'panDocument', maxCount: 1 },
@@ -196,10 +225,18 @@ router.patch('/transactions/:id/approve', (req, res) => {
   res.status(200).json({ status: 'success', message: 'Approve Transaction placeholder' });
 });
 
-// 7. Perks & Recognition
+// 7. Perks & Recognition Management
 router.route('/perks')
-  .get((req, res) => res.status(200).json({ status: 'success', message: 'List Perks placeholder' }))
-  .post((req, res) => res.status(201).json({ status: 'success', message: 'Configure Perk placeholder' }));
+  .get(getAllPerks)
+  .post(createPerkValidationRules, createPerk);
+
+router.route('/perks/:id')
+  .patch(updatePerkValidationRules, updatePerk)
+  .delete(deletePerk);
+
+router.post('/perks/assign', assignPerkValidationRules, assignPerkToClients);
+router.get('/perks/assignments', getAssignedPerks);
+router.delete('/perks/assignments/:id', unassignPerk);
 
 // 8. Activity Logs
 router.get('/activity-logs', (req, res) => {
@@ -226,5 +263,15 @@ router.post('/settings/change-password/verify-otp', verifyChangePasswordOtpRules
 router.get('/client-portal', listClientAccounts);
 router.get('/client-portal/:clientId', getClientAccountDetails);
 router.patch('/client-portal/:clientId/status', updateClientStatusRules, updateClientStatus);
+
+// 14. News & Media Articles Management
+router.route('/articles')
+  .get(getAllArticles)
+  .post(memoryUpload.single('featuredImage'), createArticleValidationRules, createArticle);
+
+router.route('/articles/:id')
+  .get(getArticleById)
+  .patch(memoryUpload.single('featuredImage'), updateArticleValidationRules, updateArticle)
+  .delete(deleteArticle);
 
 module.exports = router;

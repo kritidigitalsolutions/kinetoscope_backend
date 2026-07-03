@@ -81,6 +81,9 @@ const getClientDetailsData = async (clientId) => {
       nomineeResidency: profile.nomineeResidency || 'National (Domestic)',
       contractStartDate: profile.contractStartDate || null,
       contractEndDate: profile.contractEndDate || null,
+      extendContractDate: profile.extendContractDate || '',
+      agentCommission: profile.agentCommission || '',
+      assignedAgent: user.assignedAgent ? user.assignedAgent._id : null,
       panDocument: profile.panDocument || '',
       aadhaarDocument: profile.aadhaarDocument || '',
       bankProofDocument: profile.bankProofDocument || '',
@@ -150,7 +153,7 @@ const getClientDocumentsData = async (clientId) => {
   const documents = docTypes.map(doc => {
     const url = profile[doc.key] || '';
     const fileExtension = url.split('.').pop().split('?')[0] || 'pdf';
-    
+
     // Generate short, professional filenames like Rajesh_Kumar_Aadhaar.pdf
     const suffix = doc.key.replace('Document', '').replace('Proof', '');
     const capitalizedSuffix = suffix.charAt(0).toUpperCase() + suffix.slice(1);

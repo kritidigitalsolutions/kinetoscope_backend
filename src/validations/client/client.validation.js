@@ -244,6 +244,9 @@ const updateClientRulesByAdmin = [
   body('contractEndDate')
     .optional({ checkFalsy: true })
     .isISO8601().withMessage('Contract End Date must be a valid date'),
+  body('extendContractDate')
+    .optional({ checkFalsy: true })
+    .isISO8601().withMessage('Extend Contract Date must be a valid date'),
   body('agentCommission')
     .optional({ checkFalsy: true })
     .trim(),

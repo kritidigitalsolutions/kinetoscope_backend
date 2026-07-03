@@ -90,6 +90,21 @@ const getAgentClients = asyncHandler(async (req, res, next) => {
       roi: profile ? profile.monthlyRoi : 1.2,
       commissionPaid: Math.round(commissionPaid),
       status: profile ? profile.status : 'active',
+      
+      // Dual-compatibility nested structure
+      user: {
+        _id: client._id,
+        name: client.name,
+        email: client.email,
+        clientCode: client.clientCode || '',
+        createdAt: client.createdAt,
+      },
+      profile: {
+        _id: profile ? profile._id : null,
+        phone: profile ? profile.phone : '',
+        status: profile ? profile.status : 'active',
+        monthlyRoi: profile ? profile.monthlyRoi : 1.2,
+      },
     };
   });
 

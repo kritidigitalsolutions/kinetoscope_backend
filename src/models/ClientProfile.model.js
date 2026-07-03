@@ -237,6 +237,10 @@ const clientProfileSchema = new mongoose.Schema(
     contractEndDate: {
       type: Date,
     },
+    extendContractDate: {
+      type: String,
+      default: '',
+    },
     agentCommission: {
       type: String,
       default: '0.5% monthly',
