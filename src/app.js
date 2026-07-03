@@ -6,7 +6,22 @@ const cookieParser = require('cookie-parser');
 const AppError = require('./utils/AppError');
 const globalErrorHandler = require('./middlewares/error.middleware');
 const rootRouter = require('./routes');
+const connectDB = require('./config/db');
 const app = express();
+
+// Ensure database connection is active before processing any requests (essential for Serverless warm-starts)
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error('Database connection failed in middleware:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Database connection failed. Please try again.'
+    });
+  }
+});
 
 // Set security HTTP headers
 app.use(helmet());

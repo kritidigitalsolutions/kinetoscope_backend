@@ -89,7 +89,7 @@ const {
   updateClientStatusRules,
 } = require('../../validations/super-admin/client-portal.validation');
 
-const { upload, localUpload, memoryUpload } = require('../../middlewares/upload.middleware');
+const { upload, memoryUpload } = require('../../middlewares/upload.middleware');
 
 // Configure Multer field parsing for client onboarding documents
 const clientOnboardingUpload = upload.fields([
