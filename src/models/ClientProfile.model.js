@@ -252,7 +252,6 @@ const clientProfileSchema = new mongoose.Schema(
 );
 
 // Optimize query performance for client listing and profile searches
-clientProfileSchema.index({ userId: 1 });
 clientProfileSchema.index({ status: 1 });
 clientProfileSchema.index({ tier: 1 });
 clientProfileSchema.index({ residencyStatus: 1 });
