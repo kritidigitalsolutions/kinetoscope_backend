@@ -59,7 +59,65 @@ const toggle2FA = asyncHandler(async (req, res, next) => {
   });
 });
 
+const { ROLES } = require('../../constants/roles');
+
+/**
+ * Toggle 2FA for all clients globally (Super Admin only)
+ * PATCH /api/super-admin/settings/client-2fa
+ * Body: { is2FAEnabled: true | false }
+ */
+const toggleClient2FA = asyncHandler(async (req, res, next) => {
+  const { is2FAEnabled } = req.body;
+
+  if (typeof is2FAEnabled !== 'boolean') {
+    return next(new AppError('is2FAEnabled must be a boolean value (true or false)', 400));
+  }
+
+  const result = await User.updateMany(
+    { role: ROLES.CLIENT },
+    { is2FAEnabled }
+  );
+
+  res.status(200).json({
+    success: true,
+    message: `Two-Factor Authentication has been ${is2FAEnabled ? 'enabled' : 'disabled'} globally for all clients successfully.`,
+    data: {
+      is2FAEnabled,
+      affectedCount: result.modifiedCount,
+    },
+  });
+});
+
+/**
+ * Toggle 2FA for all agents globally (Super Admin only)
+ * PATCH /api/super-admin/settings/agent-2fa
+ * Body: { is2FAEnabled: true | false }
+ */
+const toggleAgent2FA = asyncHandler(async (req, res, next) => {
+  const { is2FAEnabled } = req.body;
+
+  if (typeof is2FAEnabled !== 'boolean') {
+    return next(new AppError('is2FAEnabled must be a boolean value (true or false)', 400));
+  }
+
+  const result = await User.updateMany(
+    { role: ROLES.AGENT },
+    { is2FAEnabled }
+  );
+
+  res.status(200).json({
+    success: true,
+    message: `Two-Factor Authentication has been ${is2FAEnabled ? 'enabled' : 'disabled'} globally for all agents successfully.`,
+    data: {
+      is2FAEnabled,
+      affectedCount: result.modifiedCount,
+    },
+  });
+});
+
 module.exports = {
   getSettings,
   toggle2FA,
+  toggleClient2FA,
+  toggleAgent2FA,
 };

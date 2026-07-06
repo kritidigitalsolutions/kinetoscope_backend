@@ -240,10 +240,311 @@ Kinetoscope Team
   return sendEmail({ to: toEmail, subject, text, html });
 };
 
+const sendTransactionRequestAlertToAdmin = async (superAdminEmails, clientName, clientCode, transactionDetails) => {
+  if (!superAdminEmails || superAdminEmails.length === 0) return;
+
+  const typeLabel = transactionDetails.type.toUpperCase();
+  const subject = `Kinetoscope – New Pending ${typeLabel} Request from ${clientName} (${clientCode})`;
+
+  const text = `
+Hello Admin,
+
+A new ${transactionDetails.type} request has been submitted and is pending your approval.
+
+Details:
+Client Name: ${clientName}
+Client Code: ${clientCode}
+Transaction Type: ${typeLabel}
+Amount: INR ${transactionDetails.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+Payment Method: ${transactionDetails.paymentMethod || 'N/A'}
+Reference/Receipt ID: ${transactionDetails.referenceNumber || 'N/A'}
+
+Please log in to the Super Admin Panel to review and action this request.
+
+— Kinetoscope Notification System
+  `.trim();
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 540px; margin: auto; padding: 32px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #ffffff;">
+      <h2 style="color: #1e293b; margin-bottom: 16px;">Pending Approval Action Required</h2>
+      <p style="color: #4b5563; font-size: 14px;">Hello Admin,</p>
+      <p style="color: #4b5563; font-size: 14px;">A new <strong>${transactionDetails.type} request</strong> is pending your review and authorization:</p>
+      
+      <div style="background: #f8fafc; border-radius: 6px; padding: 20px; border: 1px solid #e2e8f0; margin: 20px 0;">
+        <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold; width: 150px;">Client:</td>
+            <td style="padding: 6px 0; color: #0f172a;">${clientName} (${clientCode})</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold;">Type:</td>
+            <td style="padding: 6px 0; color: #0f172a; font-weight: bold; text-transform: uppercase;">${transactionDetails.type}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold;">Amount:</td>
+            <td style="padding: 6px 0; color: #1e3a8a; font-size: 16px; font-weight: bold;">INR ${transactionDetails.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold;">Method:</td>
+            <td style="padding: 6px 0; color: #0f172a;">${transactionDetails.paymentMethod || 'N/A'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold;">Reference No:</td>
+            <td style="padding: 6px 0; color: #0f172a; font-family: monospace;">${transactionDetails.referenceNumber || 'N/A'}</td>
+          </tr>
+        </table>
+      </div>
+      
+      <p style="color: #4b5563; font-size: 14px; margin-top: 16px;">Please open the Super Admin portal and navigate to <strong>Deposit & Withdrawal Approvals</strong> to authorize or decline this transaction.</p>
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+      <p style="color: #94a3b8; font-size: 11px; text-align: center;">Kross Film Productions Ltd. (KFPL)</p>
+    </div>
+  `;
+
+  await Promise.allSettled(
+    superAdminEmails.map((email) => sendEmail({ to: email, subject, text, html }))
+  );
+};
+
+const sendTransactionStatusNotification = async (toEmail, clientName, transactionDetails, status, rejectionReason) => {
+  const isApproved = status === 'approved';
+  const actionLabel = isApproved ? 'Approved' : 'Rejected';
+  const typeLabel = transactionDetails.type.toUpperCase();
+  const subject = `Kinetoscope – Your ${typeLabel} Request has been ${actionLabel}`;
+
+  const text = `
+Hello ${clientName},
+
+Your requested ${transactionDetails.type} has been ${actionLabel.toUpperCase()}.
+
+Transaction Details:
+Type: ${typeLabel}
+Amount: INR ${transactionDetails.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+Status: ${actionLabel.toUpperCase()}
+${!isApproved && rejectionReason ? `Reason for Rejection: ${rejectionReason}` : ''}
+
+If you have any questions, please reach out to your assigned account advisor or agent.
+
+Best regards,
+Kinetoscope Team
+  `.trim();
+
+  const statusBg = isApproved ? '#f0fdf4' : '#fef2f2';
+  const statusBorder = isApproved ? '#bbf7d0' : '#fecaca';
+  const statusColor = isApproved ? '#15803d' : '#b91c1c';
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 540px; margin: auto; padding: 32px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #ffffff;">
+      <h2 style="color: #1e293b; margin-bottom: 16px;">Transaction Status Update</h2>
+      <p style="color: #4b5563; font-size: 14px;">Hello <strong>${clientName}</strong>,</p>
+      <p style="color: #4b5563; font-size: 14px;">Your requested <strong>${transactionDetails.type}</strong> has been processed by the administrator.</p>
+      
+      <div style="background: ${statusBg}; border: 1px solid ${statusBorder}; border-radius: 6px; padding: 16px; margin: 20px 0; text-align: center;">
+        <span style="font-size: 16px; font-weight: bold; color: ${statusColor}; text-transform: uppercase;">
+          Status: ${actionLabel}
+        </span>
+      </div>
+
+      <div style="background: #f8fafc; border-radius: 6px; padding: 20px; border: 1px solid #e2e8f0; margin: 20px 0;">
+        <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold; width: 140px;">Type:</td>
+            <td style="padding: 6px 0; color: #0f172a; font-weight: bold; text-transform: uppercase;">${transactionDetails.type}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold;">Amount:</td>
+            <td style="padding: 6px 0; color: #0f172a; font-weight: bold;">INR ${transactionDetails.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+          </tr>
+          ${!isApproved && rejectionReason ? `
+          <tr>
+            <td style="padding: 6px 0; color: #b91c1c; font-weight: bold;">Reason:</td>
+            <td style="padding: 6px 0; color: #b91c1c; font-weight: bold;">${rejectionReason}</td>
+          </tr>
+          ` : ''}
+        </table>
+      </div>
+      
+      <p style="color: #4b5563; font-size: 14px; margin-top: 16px;">If you did not expect this update or have further questions, please contact your account advisor immediately.</p>
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+      <p style="color: #94a3b8; font-size: 11px; text-align: center;">Kross Film Productions Ltd. (KFPL)</p>
+    </div>
+  `;
+
+  return sendEmail({ to: toEmail, subject, text, html });
+};
+
+const sendKycVerificationNotification = async (clientEmail, clientName, agentEmail, documentField, kycStatus) => {
+  const isFullyVerified = kycStatus === 'VERIFIED';
+  const subject = isFullyVerified
+    ? 'Kinetoscope – Your KYC Verification is complete!'
+    : `Kinetoscope – Document Verified: ${documentField}`;
+
+  const text = isFullyVerified
+    ? `Hello ${clientName},\n\nGreat news! Your KYC verification has been completed successfully. Your profile is now fully active.\n\nBest regards,\nKinetoscope Team`
+    : `Hello ${clientName},\n\nYour uploaded document (${documentField}) has been reviewed and verified by our team.\n\nBest regards,\nKinetoscope Team`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 540px; margin: auto; padding: 32px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #ffffff;">
+      <h2 style="color: #1a1a2e; margin-bottom: 16px;">KYC Status Update</h2>
+      <p style="color: #4b5563; font-size: 14px;">Hello <strong>${clientName}</strong>,</p>
+      
+      ${isFullyVerified ? `
+      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 16px; margin: 20px 0; text-align: center;">
+        <span style="font-size: 16px; font-weight: bold; color: #15803d;">
+          KYC STATUS: FULLY VERIFIED
+        </span>
+      </div>
+      <p style="color: #4b5563; font-size: 14px;">Congratulations! All your submitted documents have been approved. Your account is now fully active and ready for operations.</p>
+      ` : `
+      <div style="background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 6px; padding: 16px; margin: 20px 0; text-align: center;">
+        <span style="font-size: 15px; font-weight: bold; color: #0d9488;">
+          Document Verified: ${documentField}
+        </span>
+      </div>
+      <p style="color: #4b5563; font-size: 14px;">Your document has been successfully verified. We are processing the remaining documents.</p>
+      `}
+      
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+      <p style="color: #94a3b8; font-size: 11px; text-align: center;">Kross Film Productions Ltd. (KFPL)</p>
+    </div>
+  `;
+
+  await sendEmail({ to: clientEmail, subject, text, html });
+
+  if (agentEmail) {
+    const agentSubject = `[Agent Copy] Client KYC Update – ${clientName}`;
+    const agentText = `Hello Agent,\n\nYour client ${clientName}'s document (${documentField}) is verified. Current KYC status: ${kycStatus}.\n\nBest regards,\nKinetoscope Team`;
+    await sendEmail({ to: agentEmail, subject: agentSubject, text: agentText, html });
+  }
+};
+
+const sendInvestmentAssignmentNotification = async (clientEmail, clientName, agentEmail, investmentDetails) => {
+  const subject = `Kinetoscope – New Investment Assigned (${investmentDetails.segment})`;
+  
+  const text = `
+Hello ${clientName},
+
+A new investment has been assigned to your account.
+
+Details:
+Segment: ${investmentDetails.segment}
+Investment Amount: INR ${investmentDetails.investmentAmount.toLocaleString('en-IN')}
+ROI Percentage: ${investmentDetails.roiPercentage}% monthly
+Risk Percentage: ${investmentDetails.riskPercentage}%
+Investment Date: ${new Date(investmentDetails.investmentDate).toLocaleDateString()}
+
+Best regards,
+Kinetoscope Team
+  `.trim();
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 540px; margin: auto; padding: 32px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #ffffff;">
+      <h2 style="color: #1a1a2e; margin-bottom: 16px;">New Investment Portfolio Assignment</h2>
+      <p style="color: #4b5563; font-size: 14px;">Hello <strong>${clientName}</strong>,</p>
+      <p style="color: #4b5563; font-size: 14px;">An investment record has been created and assigned to your portfolio:</p>
+      
+      <div style="background: #f8fafc; border-radius: 6px; padding: 20px; border: 1px solid #e2e8f0; margin: 20px 0;">
+        <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold; width: 155px;">Segment / Project:</td>
+            <td style="padding: 6px 0; color: #0f172a; font-weight: bold;">${investmentDetails.segment}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold;">Amount:</td>
+            <td style="padding: 6px 0; color: #1e3a8a; font-size: 15px; font-weight: bold;">INR ${investmentDetails.investmentAmount.toLocaleString('en-IN')}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold;">Monthly ROI:</td>
+            <td style="padding: 6px 0; color: #0f172a;">${investmentDetails.roiPercentage}%</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold;">Risk Level:</td>
+            <td style="padding: 6px 0; color: #0f172a;">${investmentDetails.riskPercentage}%</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold;">Allocation Date:</td>
+            <td style="padding: 6px 0; color: #0f172a;">${new Date(investmentDetails.investmentDate).toLocaleDateString()}</td>
+          </tr>
+        </table>
+      </div>
+      
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+      <p style="color: #94a3b8; font-size: 11px; text-align: center;">Kross Film Productions Ltd. (KFPL)</p>
+    </div>
+  `;
+
+  await sendEmail({ to: clientEmail, subject, text, html });
+
+  if (agentEmail) {
+    const agentSubject = `[Agent Copy] New Investment Assigned to Client – ${clientName}`;
+    const agentText = `Hello Agent,\n\nA new investment has been assigned to your client ${clientName} under segment ${investmentDetails.segment} with amount INR ${investmentDetails.investmentAmount}.\n\nBest regards,\nKinetoscope Team`;
+    await sendEmail({ to: agentEmail, subject: agentSubject, text: agentText, html });
+  }
+};
+
+const sendRoiPayoutNotification = async (clientEmail, clientName, agentEmail, payoutDetails) => {
+  const subject = `Kinetoscope – ROI Payout Paid (${payoutDetails.payoutMonth})`;
+  
+  const text = `
+Hello ${clientName},
+
+Your ROI payout for the month of ${payoutDetails.payoutMonth} has been marked as PAID by the administrator.
+
+Payout Details:
+Month: ${payoutDetails.payoutMonth}
+Amount: INR ${payoutDetails.amount.toLocaleString('en-IN')}
+Status: PAID
+
+Best regards,
+Kinetoscope Team
+  `.trim();
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 540px; margin: auto; padding: 32px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #ffffff;">
+      <h2 style="color: #1a1a2e; margin-bottom: 16px;">ROI Payout Receipt</h2>
+      <p style="color: #4b5563; font-size: 14px;">Hello <strong>${clientName}</strong>,</p>
+      <p style="color: #4b5563; font-size: 14px;">Your ROI payout for the month of <strong>${payoutDetails.payoutMonth}</strong> has been successfully processed and marked as paid:</p>
+      
+      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 20px; margin: 20px 0;">
+        <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold; width: 140px;">Month:</td>
+            <td style="padding: 6px 0; color: #0f172a; font-weight: bold;">${payoutDetails.payoutMonth}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold;">Amount:</td>
+            <td style="padding: 6px 0; color: #16a34a; font-size: 16px; font-weight: bold;">INR ${payoutDetails.amount.toLocaleString('en-IN')}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: bold;">Status:</td>
+            <td style="padding: 6px 0; color: #16a34a; font-weight: bold;">PAID</td>
+          </tr>
+        </table>
+      </div>
+      
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+      <p style="color: #94a3b8; font-size: 11px; text-align: center;">Kross Film Productions Ltd. (KFPL)</p>
+    </div>
+  `;
+
+  await sendEmail({ to: clientEmail, subject, text, html });
+
+  if (agentEmail) {
+    const agentSubject = `[Agent Copy] Client ROI Paid – ${clientName}`;
+    const agentText = `Hello Agent,\n\nThe ROI payout for your client ${clientName} for the month of ${payoutDetails.payoutMonth} (Amount: INR ${payoutDetails.amount}) has been marked as paid.\n\nBest regards,\nKinetoscope Team`;
+    await sendEmail({ to: agentEmail, subject: agentSubject, text: agentText, html });
+  }
+};
+
 module.exports = {
   sendEmail,
   sendChangeEmailOtp,
   sendChangePasswordOtp,
   sendWelcomeEmail,
   sendCredentialsEmail,
+  sendTransactionRequestAlertToAdmin,
+  sendTransactionStatusNotification,
+  sendKycVerificationNotification,
+  sendInvestmentAssignmentNotification,
+  sendRoiPayoutNotification,
 };

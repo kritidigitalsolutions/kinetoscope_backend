@@ -12,6 +12,8 @@ const {
 const {
   getSettings,
   toggle2FA,
+  toggleClient2FA,
+  toggleAgent2FA,
 } = require('../../controllers/super-admin/settings.controller');
 const {
   sendChangeEmailOtpHandler,
@@ -120,6 +122,43 @@ const {
   updateArticleValidationRules,
 } = require('../../validations/super-admin/article.validation');
 
+const {
+  createProject,
+  getAllProjects,
+  getProjectById,
+  updateProject,
+  deleteProject,
+} = require('../../controllers/super-admin/project.controller');
+
+const {
+  createProjectValidationRules,
+  updateProjectValidationRules,
+} = require('../../validations/super-admin/project.validation');
+
+const {
+  getAllSegments,
+  createSegment,
+  updateSegment,
+  deleteSegment,
+} = require('../../controllers/super-admin/segment.controller');
+
+const {
+  createSegmentValidationRules,
+  updateSegmentValidationRules,
+} = require('../../validations/super-admin/segment.validation');
+
+const {
+  createPool,
+  createAllotment,
+  getDividendStats,
+  getAllAllotments,
+} = require('../../controllers/super-admin/dividend.controller');
+
+const {
+  createPoolValidationRules,
+  createAllotmentValidationRules,
+} = require('../../validations/super-admin/dividend.validation');
+
 // Configure Multer field parsing for client onboarding documents
 const clientOnboardingUpload = upload.fields([
   { name: 'panDocument', maxCount: 1 },
@@ -218,12 +257,15 @@ router.patch('/agents/:id/status', updateAgentStatus);
 router.patch('/agents/:id/verify-document', verifyAgentDocument);
 
 // 6. Deposit & Withdrawal Approvals
-router.route('/transactions/approvals')
-  .get((req, res) => res.status(200).json({ status: 'success', message: 'List Pending Approvals placeholder' }));
+const {
+  getPendingApprovals,
+  approveRejectTransaction,
+} = require('../../controllers/super-admin/transaction.controller');
 
-router.patch('/transactions/:id/approve', (req, res) => {
-  res.status(200).json({ status: 'success', message: 'Approve Transaction placeholder' });
-});
+router.route('/transactions/approvals')
+  .get(getPendingApprovals);
+
+router.patch('/transactions/:id/approve', approveRejectTransaction);
 
 // 7. Perks & Recognition Management
 router.route('/perks')
@@ -243,6 +285,10 @@ router.get('/activity-logs', (req, res) => {
   res.status(200).json({ status: 'success', message: 'List System Activity Logs placeholder' });
 });
 
+// 18. Custom Email Broadcasts & Direct Notifications
+const { sendDirectEmail } = require('../../controllers/super-admin/notification.controller');
+router.post('/notifications/send-email', sendDirectEmail);
+
 // 9. Agreement Uploads
 router.route('/agreements')
   .get((req, res) => res.status(200).json({ status: 'success', message: 'List Agreements placeholder' }))
@@ -250,6 +296,8 @@ router.route('/agreements')
 // 10. Settings — 2FA and profile preferences
 router.get('/settings', getSettings);
 router.patch('/settings/2fa', toggle2FA);
+router.patch('/settings/client-2fa', toggleClient2FA);
+router.patch('/settings/agent-2fa', toggleAgent2FA);
 
 // 11. Settings — Change Email Address (OTP-based)
 router.post('/settings/change-email/send-otp', sendChangeEmailOtpRules, sendChangeEmailOtpHandler);
@@ -273,5 +321,30 @@ router.route('/articles/:id')
   .get(getArticleById)
   .patch(memoryUpload.single('featuredImage'), updateArticleValidationRules, updateArticle)
   .delete(deleteArticle);
+
+// 15. Portfolio Management (Project Catalog)
+router.route('/projects')
+  .get(getAllProjects)
+  .post(memoryUpload.single('bannerImage'), createProjectValidationRules, createProject);
+
+router.route('/projects/:id')
+  .get(getProjectById)
+  .patch(memoryUpload.single('bannerImage'), updateProjectValidationRules, updateProject)
+  .delete(deleteProject);
+
+// 16. Segment & Status Management
+router.route('/segments')
+  .get(getAllSegments)
+  .post(createSegmentValidationRules, createSegment);
+
+router.route('/segments/:id')
+  .patch(updateSegmentValidationRules, updateSegment)
+  .delete(deleteSegment);
+
+// 17. Dividend Pool & Allotment Ledger Management
+router.get('/dividends/stats', getDividendStats);
+router.get('/dividends/allotments', getAllAllotments);
+router.post('/dividends/pools', createPoolValidationRules, createPool);
+router.post('/dividends/allotments', createAllotmentValidationRules, createAllotment);
 
 module.exports = router;

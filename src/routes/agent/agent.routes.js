@@ -4,6 +4,7 @@ const { ROLES } = require('../../constants/roles');
 
 const {
   login,
+  verify2FA,
   logout,
   getMe,
 } = require('../../controllers/agent/agent-auth.controller');
@@ -25,6 +26,7 @@ const router = express.Router();
 
 // --- PUBLIC AGENT PORTAL AUTHENTICATION FLOW ---
 router.post('/auth/login', login);
+router.post('/auth/verify-2fa', verify2FA);
 router.post('/auth/logout', logout);
 
 // --- PROTECTED AGENT PORTAL ENDPOINTS (Restricted to agent role only) ---
@@ -66,5 +68,19 @@ router.post('/settings/change-password/verify-otp', verifyChangePasswordOtpRules
 // 8. News & Articles (Reader)
 router.get('/articles', getPublishedArticles);
 router.get('/articles/:id', getPublishedArticleById);
+
+// 9. Transaction requests (deposit / withdrawal on behalf of assigned client)
+const {
+  requestAgentTransaction,
+  getAgentTransactions,
+} = require('../../controllers/agent/transaction.controller');
+
+router.route('/transactions')
+  .get(getAgentTransactions)
+  .post(requestAgentTransaction);
+
+// 10. Agent direct messaging/notifications
+const { sendAgentNotificationEmail } = require('../../controllers/agent/notification.controller');
+router.post('/notifications/send-email', sendAgentNotificationEmail);
 
 module.exports = router;

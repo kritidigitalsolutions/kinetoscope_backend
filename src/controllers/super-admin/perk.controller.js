@@ -2,6 +2,7 @@ const Perk = require('../../models/Perk.model');
 const ClientPerk = require('../../models/ClientPerk.model');
 const User = require('../../models/User.model');
 const ClientProfile = require('../../models/ClientProfile.model');
+const Investment = require('../../models/Investment.model');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 
@@ -326,28 +327,67 @@ const getMyPerks = asyncHandler(async (req, res, next) => {
   const validInvestments = investments.filter(inv => inv.status !== 'cancelled');
   const totalInvestment = validInvestments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
 
-  // 2) Calculate tier progress
+  // 2) Fetch custom assigned perks from database first
+  const assignments = await ClientPerk.find({ clientId })
+    .populate({
+      path: 'perkId',
+      select: 'title description tier minInvestment status',
+    })
+    .sort({ createdAt: -1 });
+
+  const activeAssignedPerks = assignments
+    .map(assign => assign.perkId)
+    .filter(perk => perk && perk.status === 'active');
+
+  const profile = await ClientProfile.findOne({ userId: clientId });
+  const profileTier = profile ? (profile.tier || 'SILVER').toUpperCase() : 'SILVER';
+
+  // 3) Calculate investment-based tier
   // Silver: 0 to 25 Lakh (0 to 2,500,000)
   // Gold: 25 Lakh to 1 Crore (2,500,000 to 10,000,000)
   // Platinum: 1 Crore to 3 Crore (10,000,000 to 30,000,000)
   // Diamond: 3 Crore + (30,000,000+)
+  let investmentTier = 'SILVER';
+  if (totalInvestment >= 30000000) {
+    investmentTier = 'DIAMOND';
+  } else if (totalInvestment >= 10000000) {
+    investmentTier = 'PLATINUM';
+  } else if (totalInvestment >= 2500000) {
+    investmentTier = 'GOLD';
+  }
+
+  // Determine currentTier as the maximum of: investment tier, database profile tier, and highest assigned perk tier
+  const tierWeights = { SILVER: 1, GOLD: 2, PLATINUM: 3, DIAMOND: 4 };
   let currentTier = 'SILVER';
+  let maxWeight = tierWeights[investmentTier];
+
+  if (tierWeights[profileTier] > maxWeight) {
+    maxWeight = tierWeights[profileTier];
+    currentTier = profileTier;
+  }
+
+  activeAssignedPerks.forEach(p => {
+    const t = (p.tier || 'SILVER').toUpperCase();
+    if (tierWeights[t] > maxWeight) {
+      maxWeight = tierWeights[t];
+      currentTier = t;
+    }
+  });
+
+  // Calculate next tier boundaries based on current tier
   let tierLevel = 1;
   let nextTier = 'GOLD';
   let targetAmount = 2500000;
 
-  if (totalInvestment >= 30000000) {
-    currentTier = 'DIAMOND';
+  if (currentTier === 'DIAMOND') {
     tierLevel = 4;
     nextTier = null;
     targetAmount = 0;
-  } else if (totalInvestment >= 10000000) {
-    currentTier = 'PLATINUM';
+  } else if (currentTier === 'PLATINUM') {
     tierLevel = 3;
     nextTier = 'DIAMOND';
     targetAmount = 30000000;
-  } else if (totalInvestment >= 2500000) {
-    currentTier = 'GOLD';
+  } else if (currentTier === 'GOLD') {
     tierLevel = 2;
     nextTier = 'PLATINUM';
     targetAmount = 10000000;
@@ -358,20 +398,19 @@ const getMyPerks = asyncHandler(async (req, res, next) => {
   if (nextTier) {
     const prevTarget = currentTier === 'SILVER' ? 0 : (currentTier === 'GOLD' ? 2500000 : 10000000);
     const range = targetAmount - prevTarget;
-    const progress = totalInvestment - prevTarget;
+    const progress = Math.max(0, totalInvestment - prevTarget);
     percentage = Math.min(100, Math.max(0, Math.round((progress / range) * 100)));
   } else {
     percentage = 100;
   }
 
-  // 3) Auto-sync calculated tier to ClientProfile model in DB if different
-  const profile = await ClientProfile.findOne({ userId: clientId });
-  if (profile && profile.tier !== currentTier) {
+  // 4) Auto-sync calculated tier to ClientProfile model in DB if higher than stored tier
+  if (profile && (!profile.tier || tierWeights[currentTier] > tierWeights[profile.tier.toUpperCase()])) {
     profile.tier = currentTier;
     await profile.save();
   }
 
-  // 4) Gather tier-specific default benefits
+  // 5) Gather tier-specific default benefits
   const defaultBenefitsMap = {
     SILVER: [
       { title: 'Monthly investment reports', description: 'Standard monthly performance statement' },
@@ -397,22 +436,11 @@ const getMyPerks = asyncHandler(async (req, res, next) => {
 
   const currentTierBenefits = defaultBenefitsMap[currentTier] || [];
 
-  // 5) Fetch custom assigned perks from database
-  const assignments = await ClientPerk.find({ clientId })
-    .populate({
-      path: 'perkId',
-      select: 'title description tier minInvestment status',
-    })
-    .sort({ createdAt: -1 });
-
-  const assignedPerks = assignments
-    .map(assign => assign.perkId)
-    .filter(perk => perk && perk.status === 'active')
-    .map(perk => ({
-      title: perk.title,
-      description: perk.description,
-      isCustom: true
-    }));
+  const assignedPerks = activeAssignedPerks.map(perk => ({
+    title: perk.title,
+    description: perk.description,
+    isCustom: true
+  }));
 
   // Merge default benefits with custom assigned perks
   const allPerks = [...currentTierBenefits, ...assignedPerks];

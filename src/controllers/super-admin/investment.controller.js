@@ -1,4 +1,7 @@
 const Investment = require('../../models/Investment.model');
+const User = require('../../models/User.model');
+const { sendInvestmentAssignmentNotification } = require('../../services/email.service');
+const { ROLES } = require('../../constants/roles');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 
@@ -8,12 +11,48 @@ const asyncHandler = require('../../utils/asyncHandler');
  * POST /api/super-admin/investments
  */
 const createInvestment = asyncHandler(async (req, res, next) => {
+  const { clientId } = req.body;
+
+  if (!clientId) {
+    return next(new AppError('Client ID is required.', 400));
+  }
+
+  // Fetch client from database to ensure existence and grab correct name/code
+  const clientUser = await User.findById(clientId);
+  if (!clientUser || clientUser.role !== ROLES.CLIENT) {
+    return next(new AppError('Client account not found.', 404));
+  }
+
   const investmentData = {
     ...req.body,
+    clientName: clientUser.name,
+    clientCode: clientUser.clientCode,
     createdBy: req.user.id,
   };
 
   const investment = await Investment.create(investmentData);
+
+  // Send automated email notification to client and their agent
+  try {
+    if (clientUser.email) {
+      let agentEmail = null;
+      if (clientUser.assignedAgent) {
+        const agent = await User.findById(clientUser.assignedAgent);
+        if (agent) agentEmail = agent.email;
+      }
+
+      sendInvestmentAssignmentNotification(
+        clientUser.email,
+        clientUser.name,
+        agentEmail,
+        investment
+      ).catch((err) =>
+        console.error('[Investment Notification Error]:', err.message)
+      );
+    }
+  } catch (error) {
+    console.error('[Investment Notification Processing Error]:', error.message);
+  }
 
   res.status(201).json({
     success: true,

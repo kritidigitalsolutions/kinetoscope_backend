@@ -23,15 +23,7 @@ const createInvestmentValidationRules = [
     .notEmpty().withMessage('Client ID is required')
     .isMongoId().withMessage('Client ID must be a valid MongoDB ObjectId'),
 
-  body('clientName')
-    .trim()
-    .notEmpty().withMessage('Client name is required')
-    .isString().withMessage('Client name must be a string'),
 
-  body('clientCode')
-    .trim()
-    .notEmpty().withMessage('Client code is required')
-    .isString().withMessage('Client code must be a string'),
 
   body('segment')
     .trim()

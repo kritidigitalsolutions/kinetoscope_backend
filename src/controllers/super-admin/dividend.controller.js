@@ -1,0 +1,258 @@
+const DividendPool = require('../../models/DividendPool.model');
+const DividendAllotment = require('../../models/DividendAllotment.model');
+const User = require('../../models/User.model');
+const Project = require('../../models/Project.model');
+const AppError = require('../../utils/AppError');
+const asyncHandler = require('../../utils/asyncHandler');
+
+/**
+ * Seed default dividend pool and allotments if database is empty
+ */
+const seedMockDividends = async (creatorId) => {
+  const poolCount = await DividendPool.countDocuments();
+  const allotmentCount = await DividendAllotment.countDocuments();
+
+  if (poolCount > 0 || allotmentCount > 0) return;
+
+  // 1. Seed standard pool of ₹15.00 L
+  const defaultPool = await DividendPool.create({
+    poolAmount: 1500000, // ₹15.00 L
+    name: 'Inaugural Dividend Pool',
+    remarks: 'Initial dividend pool for fiscal year 2025-2026.',
+    createdBy: creatorId,
+  });
+
+  console.log('[Dividend Seeder] Successfully seeded dividend pool of ₹15.00 L.');
+
+  // 2. Fetch clients and projects to assign allotments
+  const rajesh = await User.findOne({ clientCode: 'KFPL-1001' });
+  const priya = await User.findOne({ clientCode: 'KFPL-1002' });
+  const suresh = await User.findOne({ clientCode: 'KFPL-1004' });
+
+  // If suresh doesn't exist, try to find any client to prevent failing
+  const anyClients = await User.find({ role: 'client' }).limit(3);
+  const client1 = rajesh || anyClients[0];
+  const client2 = priya || anyClients[1] || client1;
+  const client3 = suresh || anyClients[2] || client2;
+
+  const astra = await Project.findOne({ name: 'Project Astra' });
+  const rhythm = await Project.findOne({ name: 'Rhythm Series' });
+  const anyProjects = await Project.find().limit(2);
+  const project1 = astra || anyProjects[0];
+  const project2 = rhythm || anyProjects[1] || project1;
+
+  if (!client1 || !project1) {
+    console.log('[Dividend Seeder Warning] Skipping allotments seeding: No client users or projects found in database.');
+    return;
+  }
+
+  // 3. Seed allotments
+  const mockAllotments = [
+    {
+      clientId: client1._id,
+      projectId: project1._id,
+      allottedAmount: 150000, // ₹1.50 L
+      allotmentDate: new Date('2025-04-15T05:30:00.000Z'),
+      remarks: 'Annual performance bonus for exceptional project returns.',
+      createdBy: creatorId,
+    },
+    {
+      clientId: client2._id,
+      projectId: project1._id,
+      allottedAmount: 120000, // ₹1.20 L
+      allotmentDate: new Date('2025-04-15T05:30:00.000Z'),
+      remarks: 'Annual performance bonus for exceptional project returns.',
+      createdBy: creatorId,
+    },
+    {
+      clientId: client3._id,
+      projectId: project2._id,
+      allottedAmount: 50000, // ₹50,000
+      allotmentDate: new Date('2025-05-10T05:30:00.000Z'),
+      remarks: 'Streaming milestone bonus for Rhythm catalogue.',
+      createdBy: creatorId,
+    },
+  ];
+
+  await DividendAllotment.create(mockAllotments);
+  console.log('[Dividend Seeder] Successfully seeded standard allotments matching screenshot.');
+};
+
+/**
+ * Configure/Create a Dividend Pool (Super Admin)
+ * POST /api/super-admin/dividends/pools
+ */
+const createPool = asyncHandler(async (req, res, next) => {
+  const { poolAmount, name, remarks } = req.body;
+
+  const pool = await DividendPool.create({
+    poolAmount: Number(poolAmount),
+    name: name || 'General Pool',
+    remarks: remarks || '',
+    createdBy: req.user.id,
+  });
+
+  res.status(201).json({
+    success: true,
+    message: 'Dividend pool configured successfully',
+    data: pool,
+  });
+});
+
+/**
+ * Allot dividends to a client (Super Admin)
+ * POST /api/super-admin/dividends/allotments
+ */
+const createAllotment = asyncHandler(async (req, res, next) => {
+  const { clientId, projectId, allottedAmount, remarks } = req.body;
+
+  // Verify client user exists
+  const clientUser = await User.findById(clientId);
+  if (!clientUser) {
+    return next(new AppError('Target client user not found', 404));
+  }
+
+  // Verify project exists
+  const project = await Project.findById(projectId);
+  if (!project) {
+    return next(new AppError('Target project not found', 404));
+  }
+
+  const amt = Number(allottedAmount);
+
+  // Validate pool limit
+  const poolSum = await DividendPool.find().lean();
+  const totalPools = poolSum.reduce((sum, p) => sum + p.poolAmount, 0);
+
+  const allotmentSum = await DividendAllotment.find().lean();
+  const totalAllotments = allotmentSum.reduce((sum, a) => sum + a.allottedAmount, 0);
+
+  const remainingBalance = totalPools - totalAllotments;
+  if (amt > remainingBalance) {
+    return next(new AppError(`Insufficient pool balance. Remaining: ₹${(remainingBalance / 100000).toFixed(2)} Lakhs, Requested: ₹${(amt / 100000).toFixed(2)} Lakhs. Please configure a new pool.`, 400));
+  }
+
+  const allotment = await DividendAllotment.create({
+    clientId,
+    projectId,
+    allottedAmount: amt,
+    remarks: remarks || '',
+    createdBy: req.user.id,
+  });
+
+  res.status(201).json({
+    success: true,
+    message: 'Dividend allotted successfully',
+    data: allotment,
+  });
+});
+
+/**
+ * Get stats of Dividend Pools (Super Admin & Client)
+ * GET /api/super-admin/dividends/stats
+ */
+const getDividendStats = asyncHandler(async (req, res, next) => {
+  await seedMockDividends(req.user.id);
+
+  const poolSum = await DividendPool.find().lean();
+  const totalPoolsConfigured = poolSum.reduce((sum, p) => sum + p.poolAmount, 0);
+
+  const allotmentSum = await DividendAllotment.find().lean();
+  const dividendsDistributed = allotmentSum.reduce((sum, a) => sum + a.allottedAmount, 0);
+
+  const remainingPoolsBalance = totalPoolsConfigured - dividendsDistributed;
+
+  res.status(200).json({
+    success: true,
+    data: {
+      totalPoolsConfigured,
+      dividendsDistributed,
+      remainingPoolsBalance,
+    },
+  });
+});
+
+/**
+ * Get all allotments (Super Admin - Allotment Ledger list)
+ * GET /api/super-admin/dividends/allotments
+ */
+const getAllAllotments = asyncHandler(async (req, res, next) => {
+  await seedMockDividends(req.user.id);
+
+  let allotments = await DividendAllotment.find()
+    .populate('clientId', 'name email clientCode')
+    .populate('projectId', 'name segment')
+    .sort({ allotmentDate: -1 })
+    .lean();
+
+  if (req.query.search) {
+    const search = req.query.search.toLowerCase();
+    allotments = allotments.filter(allot => {
+      const clientName = (allot.clientId?.name || '').toLowerCase();
+      const clientCode = (allot.clientId?.clientCode || '').toLowerCase();
+      const projectName = (allot.projectId?.name || '').toLowerCase();
+      const projectSegment = (allot.projectId?.segment || '').toLowerCase();
+      const remarks = (allot.remarks || '').toLowerCase();
+
+      return (
+        clientName.includes(search) ||
+        clientCode.includes(search) ||
+        projectName.includes(search) ||
+        projectSegment.includes(search) ||
+        remarks.includes(search)
+      );
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    count: allotments.length,
+    data: {
+      allotments,
+    },
+  });
+});
+
+/**
+ * Get allotments for logged-in client (Client view)
+ * GET /api/client/dividends
+ */
+const getClientAllotments = asyncHandler(async (req, res, next) => {
+  const allotments = await DividendAllotment.find({ clientId: req.user.id })
+    .populate('projectId', 'name segment')
+    .sort({ allotmentDate: -1 })
+    .lean();
+
+  res.status(200).json({
+    success: true,
+    count: allotments.length,
+    data: {
+      allotments,
+    },
+  });
+});
+
+/**
+ * Get client specific dividend stats
+ * GET /api/client/dividends/stats
+ */
+const getClientDividendStats = asyncHandler(async (req, res, next) => {
+  const allotments = await DividendAllotment.find({ clientId: req.user.id }).lean();
+  const totalDividendsReceived = allotments.reduce((sum, a) => sum + a.allottedAmount, 0);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      totalDividendsReceived,
+    },
+  });
+});
+
+module.exports = {
+  createPool,
+  createAllotment,
+  getDividendStats,
+  getAllAllotments,
+  getClientAllotments,
+  getClientDividendStats,
+};

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const User = require('../../models/User.model');
 const ClientProfile = require('../../models/ClientProfile.model');
 const { deleteFromCloudinary, processDocumentUploadsInBackground, uploadDocumentsToCloudinaryParallelBackground } = require('../../services/cloudinary.service');
-const { sendWelcomeEmail } = require('../../services/email.service');
+const { sendWelcomeEmail, sendKycVerificationNotification } = require('../../services/email.service');
 const { calculateDashboardData } = require('../client/client-dashboard.controller');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
@@ -609,6 +609,30 @@ const verifyDocument = asyncHandler(async (req, res, next) => {
   }
 
   await profile.save();
+
+  // Send automated email notification to the client and their assigned agent (if any)
+  try {
+    const clientUser = await User.findById(id);
+    if (clientUser && clientUser.email) {
+      let agentEmail = null;
+      if (clientUser.assignedAgent) {
+        const agent = await User.findById(clientUser.assignedAgent);
+        if (agent) agentEmail = agent.email;
+      }
+
+      sendKycVerificationNotification(
+        clientUser.email,
+        clientUser.name,
+        agentEmail,
+        documentField,
+        profile.kycStatus
+      ).catch((err) =>
+        console.error('[KYC Notification Error]:', err.message)
+      );
+    }
+  } catch (error) {
+    console.error('[KYC Notification Processing Error]:', error.message);
+  }
 
   res.status(200).json({
     success: true,

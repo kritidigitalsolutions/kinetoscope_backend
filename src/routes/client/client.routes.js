@@ -4,6 +4,7 @@ const { ROLES } = require('../../constants/roles');
 
 const {
   login,
+  verify2FA,
   logout,
   getMe,
 } = require('../../controllers/client/client-auth.controller');
@@ -27,6 +28,15 @@ const {
 } = require('../../controllers/super-admin/perk.controller');
 
 const {
+  getClientProjects,
+} = require('../../controllers/super-admin/project.controller');
+
+const {
+  getClientAllotments,
+  getClientDividendStats,
+} = require('../../controllers/super-admin/dividend.controller');
+
+const {
   updateClientProfileRules,
 } = require('../../validations/client/client.validation');
 
@@ -44,6 +54,7 @@ const router = express.Router();
 
 // --- PUBLIC CLIENT PORTAL AUTHENTICATION FLOW ---
 router.post('/auth/login', login);
+router.post('/auth/verify-2fa', verify2FA);
 router.post('/auth/logout', logout);
 
 // --- PROTECTED CLIENT PORTAL ENDPOINTS (Restricted to client role only) ---
@@ -77,5 +88,26 @@ router.get('/articles/:id', getPublishedArticleById);
 
 // 8. Assigned Perks (Client view)
 router.get('/perks', getMyPerks);
+
+// 9. Portfolio Projects (Client view)
+router.get('/projects', getClientProjects);
+
+// 10. Dividends & Allotment Ledger (Client view)
+router.get('/dividends', getClientAllotments);
+router.get('/dividends/stats', getClientDividendStats);
+
+// 11. Transaction requests (deposit / withdrawal)
+const {
+  requestTransaction,
+  getClientTransactions,
+} = require('../../controllers/client/transaction.controller');
+
+router.route('/transactions')
+  .get(getClientTransactions)
+  .post(requestTransaction);
+
+// 12. Client direct messaging/notifications
+const { sendClientNotificationEmail } = require('../../controllers/client/notification.controller');
+router.post('/notifications/send-email', sendClientNotificationEmail);
 
 module.exports = router;

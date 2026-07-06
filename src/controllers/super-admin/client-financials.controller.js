@@ -3,6 +3,8 @@ const financialsService = require('../../services/client-financials.service');
 const clientDetailsService = require('../../services/client-details.service');
 const perksService = require('../../services/perks.service');
 const ClientProfile = require('../../models/ClientProfile.model');
+const User = require('../../models/User.model');
+const { sendRoiPayoutNotification } = require('../../services/email.service');
 const asyncHandler = require('../../utils/asyncHandler');
 const AppError = require('../../utils/AppError');
 
@@ -42,6 +44,29 @@ const markRoiPaid = asyncHandler(async (req, res, next) => {
   const { id: clientId, payoutId } = req.params;
 
   const updatedPayout = await financialsService.payRoiPayout(clientId, payoutId);
+
+  // Send automated email notification
+  try {
+    const clientUser = await User.findById(clientId);
+    if (clientUser && clientUser.email) {
+      let agentEmail = null;
+      if (clientUser.assignedAgent) {
+        const agent = await User.findById(clientUser.assignedAgent);
+        if (agent) agentEmail = agent.email;
+      }
+
+      sendRoiPayoutNotification(
+        clientUser.email,
+        clientUser.name,
+        agentEmail,
+        updatedPayout
+      ).catch((err) =>
+        console.error('[ROI Notification Error]:', err.message)
+      );
+    }
+  } catch (error) {
+    console.error('[ROI Notification Processing Error]:', error.message);
+  }
 
   res.status(200).json({
     success: true,
