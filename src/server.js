@@ -23,7 +23,13 @@ socketService.init(server);
 // Start server
 const activeServer = server.listen(port, () => {
   console.log(`KFPL server running on port ${port}...`);
-}); // Trigger reload
+  try {
+    const { startScheduledEmailCheck } = require('./controllers/super-admin/notification.controller');
+    startScheduledEmailCheck();
+  } catch (err) {
+    console.error('Failed to start scheduled email check:', err.message);
+  }
+});
 module.exports = server;
 
 // Handle unhandled rejections

@@ -16,6 +16,7 @@ const sendEmail = async (options) => {
     subject: options.subject,
     text: options.text,
     html: options.html,
+    attachments: options.attachments,
   };
 
   try {
@@ -168,7 +169,20 @@ Kinetoscope Team
     </div>
   `;
 
-  return sendEmail({ to: toEmail, subject, text, html });
+  const isAgent = clientCode && clientCode.toString().toUpperCase().includes('AGT');
+  if (isAgent) {
+    return sendEmail({ to: toEmail, subject, text, html });
+  }
+
+  return trackAndSendSystemEmail('new_investor_onboarded', {
+    to: toEmail,
+    subject,
+    text,
+    html,
+    recipientGroup: 'Individual',
+    targetSummary: `${clientName} (${clientCode})`,
+    templateName: 'Welcome Investor Kit'
+  });
 };
 
 /**
@@ -370,7 +384,19 @@ Kinetoscope Team
     </div>
   `;
 
-  return sendEmail({ to: toEmail, subject, text, html });
+  const typeKey = transactionDetails.type.trim().toLowerCase() === 'deposit' ? 'deposit' : 'withdrawal';
+  const statusKey = status.trim().toLowerCase() === 'approved' ? 'approved' : 'rejected';
+  const triggerKey = `${typeKey}_${statusKey}`;
+
+  return trackAndSendSystemEmail(triggerKey, {
+    to: toEmail,
+    subject,
+    text,
+    html,
+    recipientGroup: 'Individual',
+    targetSummary: `${clientName}`,
+    templateName: 'Account Security Alert'
+  });
 };
 
 const sendKycVerificationNotification = async (clientEmail, clientName, agentEmail, documentField, kycStatus) => {
@@ -473,7 +499,15 @@ Kinetoscope Team
     </div>
   `;
 
-  await sendEmail({ to: clientEmail, subject, text, html });
+  await trackAndSendSystemEmail('investment_assigned', {
+    to: clientEmail,
+    subject,
+    text,
+    html,
+    recipientGroup: 'Individual',
+    targetSummary: `${clientName}`,
+    templateName: 'Welcome Investor Kit'
+  });
 
   if (agentEmail) {
     const agentSubject = `[Agent Copy] New Investment Assigned to Client – ${clientName}`;
@@ -527,13 +561,135 @@ Kinetoscope Team
     </div>
   `;
 
-  await sendEmail({ to: clientEmail, subject, text, html });
+  await trackAndSendSystemEmail('roi_paid', {
+    to: clientEmail,
+    subject,
+    text,
+    html,
+    recipientGroup: 'Individual',
+    targetSummary: `${clientName}`,
+    templateName: 'Quarterly Statement Notice'
+  });
 
   if (agentEmail) {
     const agentSubject = `[Agent Copy] Client ROI Paid – ${clientName}`;
     const agentText = `Hello Agent,\n\nThe ROI payout for your client ${clientName} for the month of ${payoutDetails.payoutMonth} (Amount: INR ${payoutDetails.amount}) has been marked as paid.\n\nBest regards,\nKinetoscope Team`;
     await sendEmail({ to: agentEmail, subject: agentSubject, text: agentText, html });
   }
+};
+
+const trackAndSendSystemEmail = async (triggerKey, sendOptions) => {
+  const AutoTriggerConfig = require('../models/AutoTriggerConfig.model');
+  const EmailLog = require('../models/EmailLog.model');
+
+  try {
+    // 1. Check if trigger is configured and enabled
+    const config = await AutoTriggerConfig.findOne({ triggerKey });
+    
+    // If config exists and is disabled, we skip sending
+    if (config && !config.isEnabled) {
+      console.log(`[Auto Trigger] Skipped sending. Trigger '${triggerKey}' is currently disabled.`);
+      return { skipped: true };
+    }
+
+    // 2. Perform email dispatch
+    const info = await sendEmail({
+      to: sendOptions.to,
+      subject: sendOptions.subject,
+      text: sendOptions.text,
+      html: sendOptions.html,
+      attachments: sendOptions.attachments
+    });
+
+    // 3. Update stats if config is found
+    if (config) {
+      config.totalEmailsSent += 1;
+      config.lastExecuted = new Date();
+      await config.save();
+    } else {
+      // Create trigger config if it doesn't exist yet (automatic self-healing)
+      const friendlyTriggers = {
+        new_investor_onboarded: { systemEventTrigger: 'New Investor Onboarded', recipientPortal: 'Client' },
+        agreement_uploaded: { systemEventTrigger: 'Agreement Uploaded', recipientPortal: 'Client' },
+        investment_assigned: { systemEventTrigger: 'Investment Assigned / Modified', recipientPortal: 'Client' },
+        roi_paid: { systemEventTrigger: 'ROI Marked as Paid', recipientPortal: 'Client' },
+        deposit_approved: { systemEventTrigger: 'Deposit Approved', recipientPortal: 'Client / Agent' },
+        deposit_rejected: { systemEventTrigger: 'Deposit Rejected', recipientPortal: 'Client / Agent' },
+        withdrawal_approved: { systemEventTrigger: 'Withdrawal Approved', recipientPortal: 'Client / Agent' },
+        withdrawal_rejected: { systemEventTrigger: 'Withdrawal Rejected', recipientPortal: 'Client / Agent' },
+        commission_paid: { systemEventTrigger: 'Commission Marked as Paid', recipientPortal: 'Agent' },
+        perk_assigned: { systemEventTrigger: 'Perk Assigned', recipientPortal: 'Client' }
+      };
+
+      const meta = friendlyTriggers[triggerKey] || { systemEventTrigger: triggerKey, recipientPortal: 'System' };
+      await AutoTriggerConfig.create({
+        triggerKey,
+        systemEventTrigger: meta.systemEventTrigger,
+        recipientPortal: meta.recipientPortal,
+        isEnabled: true,
+        totalEmailsSent: 1,
+        lastExecuted: new Date()
+      });
+    }
+
+    // 4. Create log history
+    await EmailLog.create({
+      subject: sendOptions.subject,
+      recipientGroup: sendOptions.recipientGroup || 'Individual',
+      targetSummary: sendOptions.targetSummary || sendOptions.to,
+      templateName: sendOptions.templateName || 'System Auto Notification',
+      attachmentsCount: sendOptions.attachments ? sendOptions.attachments.length : 0,
+      recipientEmails: [sendOptions.to]
+    });
+
+    return info;
+  } catch (error) {
+    console.error(`[Auto Trigger Error] Failed to process/send email for trigger '${triggerKey}':`, error.message);
+    throw error;
+  }
+};
+
+const sendNewArticleNotification = async (recipientEmail, article) => {
+  const subject = `KFPL Insights: New Article Released – ${article.title}`;
+  const text = `Hello,\n\nA new article has been published on KFPL Insights.\n\nTitle: ${article.title}\nCategory: ${article.category}\nExcerpt: ${article.excerpt}\n\nRead more details in your portal feed.\n\nBest regards,\nKross Film Productions Ltd. (KFPL)`;
+  
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 580px; margin: auto; padding: 32px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #ffffff;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <span style="font-size: 12px; font-weight: bold; color: #10b981; text-transform: uppercase; letter-spacing: 1.5px;">KFPL Insights</span>
+      </div>
+      <h2 style="color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 20px; font-size: 22px; font-weight: bold; line-height: 1.3;">
+        ${article.title}
+      </h2>
+      <div style="margin-bottom: 20px; color: #64748b; font-size: 13px;">
+        <span>Category: <strong>${article.category || 'General'}</strong></span> &bull; 
+        <span>Author: <strong>${article.author || 'KFPL Team'}</strong></span>
+      </div>
+      
+      ${article.featuredImage ? `
+        <div style="margin-bottom: 24px; text-align: center;">
+          <img src="${article.featuredImage}" alt="${article.title}" style="max-width: 100%; border-radius: 6px; height: auto;" />
+        </div>
+      ` : ''}
+      
+      <div style="color: #334155; font-size: 15px; line-height: 1.6; margin-bottom: 24px;">
+        <p style="font-style: italic; color: #475569; border-left: 3px solid #cbd5e1; padding-left: 12px; margin-bottom: 16px;">
+          ${article.excerpt}
+        </p>
+        <p>${article.content ? article.content.substring(0, 300) : ''}...</p>
+      </div>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${process.env.CLIENT_PORTAL_URL || 'http://localhost:5173'}/media/${article._id}" style="background-color: #0f172a; color: #ffffff; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block;">Read Full Article</a>
+      </div>
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+      <p style="color: #94a3b8; font-size: 11px; text-align: center; line-height: 1.4;">
+        You received this email because you subscribed to updates on KFPL Insights.<br/>
+        Kross Film Productions Ltd. (KFPL)
+      </p>
+    </div>
+  `;
+
+  return sendEmail({ to: recipientEmail, subject, text, html });
 };
 
 module.exports = {
@@ -547,4 +703,6 @@ module.exports = {
   sendKycVerificationNotification,
   sendInvestmentAssignmentNotification,
   sendRoiPayoutNotification,
+  trackAndSendSystemEmail,
+  sendNewArticleNotification,
 };

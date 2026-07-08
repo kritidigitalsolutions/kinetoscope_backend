@@ -764,6 +764,77 @@ const verifyAgentDocument = asyncHandler(async (req, res, next) => {
   });
 });
 
+const payAgentCommission = asyncHandler(async (req, res, next) => {
+  const { commissionId } = req.params;
+
+  const commission = await AgentCommission.findById(commissionId);
+  if (!commission) {
+    return next(new AppError('Commission record not found.', 404));
+  }
+
+  if (commission.status === 'PAID') {
+    return next(new AppError('This commission record has already been marked as PAID.', 400));
+  }
+
+  commission.status = 'PAID';
+  commission.date = new Date();
+  await commission.save();
+
+  // Retrieve agent email
+  const agent = await User.findById(commission.agentId);
+  if (agent && agent.email) {
+    try {
+      const { trackAndSendSystemEmail } = require('../../services/email.service');
+      const subject = `Kinetoscope – Commission Payout Paid (${commission.period})`;
+      const text = `Hello ${agent.name},\n\nYour commission of INR ${commission.amount.toLocaleString('en-IN')} for the period of ${commission.period} has been processed and marked as PAID.\n\nBest regards,\nKinetoscope Team`;
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 540px; margin: auto; padding: 32px; border: 1px solid #e5e7eb; border-radius: 8px;">
+          <h2 style="color: #10b981; margin-bottom: 16px;">Commission Payout Approved</h2>
+          <p style="color: #4b5563; font-size: 14px;">Hello <strong>${agent.name}</strong>,</p>
+          <p style="color: #4b5563; font-size: 14px;">We are pleased to inform you that your commission payout has been successfully processed:</p>
+          
+          <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 20px; margin: 20px 0;">
+            <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 6px 0; color: #64748b; font-weight: bold; width: 140px;">Period:</td>
+                <td style="padding: 6px 0; color: #0f172a; font-weight: bold;">${commission.period}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #64748b; font-weight: bold;">Amount:</td>
+                <td style="padding: 6px 0; color: #16a34a; font-size: 16px; font-weight: bold;">INR ${commission.amount.toLocaleString('en-IN')}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #64748b; font-weight: bold;">Status:</td>
+                <td style="padding: 6px 0; color: #16a34a; font-weight: bold;">PAID</td>
+              </tr>
+            </table>
+          </div>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+          <p style="color: #94a3b8; font-size: 11px; text-align: center;">Kross Film Productions Ltd. (KFPL)</p>
+        </div>
+      `;
+
+      await trackAndSendSystemEmail('commission_paid', {
+        to: agent.email,
+        subject,
+        text,
+        html,
+        recipientGroup: 'Individual',
+        targetSummary: `${agent.name}`,
+        templateName: 'System Auto Notification'
+      });
+    } catch (emailErr) {
+      console.error(`Failed to send commission paid email to agent ${agent._id}:`, emailErr.message);
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    message: 'Commission successfully marked as PAID.',
+    data: { commission }
+  });
+});
+
 module.exports = {
   createAgent,
   getAllAgents,
@@ -774,5 +845,6 @@ module.exports = {
   getAgentCommissions,
   updateAgentStatus,
   verifyAgentDocument,
+  payAgentCommission,
 };
 

@@ -28,11 +28,34 @@ const memoryUpload = multer({
             file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
             file.mimetype.startsWith('image/');
         if (extName || mimeType) {
-            cb(null, true);
-        } else {
-            cb(new Error('Only jpg, jpeg, png, webp, pdf, and docx files are allowed.'));
-        }
-    },
+      cb(null, true);
+    } else {
+      cb(new Error('Only jpg, jpeg, png, webp, pdf, and docx files are allowed.'));
+    }
+  },
 });
 
-module.exports = { upload, memoryUpload };
+// --- Rewards Upload Memory Storage (allows images and videos) ---
+const rewardsUpload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpg|jpeg|png|webp|mp4|webm|avi|mov|mkv/;
+    const extName = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimeType = allowedTypes.test(file.mimetype) ||
+      file.mimetype.startsWith('image/') ||
+      file.mimetype.startsWith('video/');
+    if (extName || mimeType) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only images (jpg, jpeg, png, webp) and videos (mp4, webm, avi, mov) are allowed.'));
+    }
+  },
+});
+
+// Generic upload middleware allowing any file type up to 25MB (primarily for email attachments)
+const anyUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }
+});
+
+module.exports = { upload, memoryUpload, rewardsUpload, anyUpload };

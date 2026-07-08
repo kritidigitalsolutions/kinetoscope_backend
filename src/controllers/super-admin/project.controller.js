@@ -7,8 +7,22 @@ const asyncHandler = require('../../utils/asyncHandler');
  * Seed default mock projects if catalog is empty
  */
 const seedMockProjects = async (creatorId) => {
+  const mongoose = require('mongoose');
+  const SystemConfig = mongoose.models.SystemConfig || mongoose.model('SystemConfig', new mongoose.Schema({
+    key: { type: String, unique: true },
+    value: Boolean
+  }));
+
+  const config = await SystemConfig.findOne({ key: 'projects_seeded' });
+  if (config && config.value) {
+    return;
+  }
+
   const count = await Project.countDocuments();
-  if (count > 0) return;
+  if (count > 0) {
+    await SystemConfig.findOneAndUpdate({ key: 'projects_seeded' }, { value: true }, { upsert: true });
+    return;
+  }
 
   const mockProjects = [
     {
@@ -92,6 +106,7 @@ const seedMockProjects = async (creatorId) => {
   ];
 
   await Project.create(mockProjects);
+  await SystemConfig.findOneAndUpdate({ key: 'projects_seeded' }, { value: true }, { upsert: true });
   console.log('[Project Seeder] Successfully seeded standard projects in Project Catalog.');
 };
 
@@ -213,6 +228,7 @@ const updateProject = asyncHandler(async (req, res, next) => {
     'milestoneProgress',
     'health',
     'summary',
+    'mediaFiles',
   ];
 
   allowedFields.forEach(field => {
@@ -223,6 +239,19 @@ const updateProject = asyncHandler(async (req, res, next) => {
 
   if (updates.milestoneProgress !== undefined) {
     updates.milestoneProgress = Number(updates.milestoneProgress);
+  }
+
+  // Handle banner image removal if explicitly set to empty or null
+  if (req.body.bannerImage === '' || req.body.bannerImage === null || req.body.bannerImage === 'null') {
+    updates.bannerImage = '';
+    if (project.bannerImage) {
+      try {
+        console.log('[Project Controller] Deleting banner image from Cloudinary for removal:', project.bannerImage);
+        await deleteFromCloudinary(project.bannerImage);
+      } catch (err) {
+        console.error('[Project Controller Cleanup] Failed to delete banner image:', err.message);
+      }
+    }
   }
 
   // Handle banner image replacement
@@ -307,6 +336,82 @@ const getClientProjects = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * Upload a media file/image to a Project (Super Admin only)
+ * POST /api/super-admin/projects/:id/media
+ */
+const uploadProjectMedia = asyncHandler(async (req, res, next) => {
+  const project = await Project.findById(req.params.id);
+  if (!project) {
+    return next(new AppError('Project not found', 404));
+  }
+
+  const file = req.file || (req.files && req.files[0]);
+  if (!file) {
+    return next(new AppError('Please upload a file.', 400));
+  }
+
+  let mediaUrl = '';
+  try {
+    console.log('[Project Controller] Uploading project media file to Cloudinary...');
+    mediaUrl = await uploadBufferToCloudinary(file.buffer, 'kinetoscope/projects/media');
+  } catch (uploadError) {
+    return next(new AppError(`Media upload failed: ${uploadError.message}`, 500));
+  }
+
+  project.mediaFiles.push(mediaUrl);
+  await project.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Media file uploaded successfully',
+    data: {
+      url: mediaUrl,
+      project,
+    },
+  });
+});
+
+/**
+ * Delete a media file/image from a Project (Super Admin only)
+ * DELETE /api/super-admin/projects/:id/media
+ */
+const deleteProjectMedia = asyncHandler(async (req, res, next) => {
+  const project = await Project.findById(req.params.id);
+  if (!project) {
+    return next(new AppError('Project not found', 404));
+  }
+
+  const { url } = req.body;
+  if (!url) {
+    return next(new AppError('Please provide the URL of the media file to delete.', 400));
+  }
+
+  // Remove url from array
+  const originalLength = project.mediaFiles.length;
+  project.mediaFiles = project.mediaFiles.filter(item => item !== url);
+
+  if (project.mediaFiles.length === originalLength) {
+    return next(new AppError('Media file URL not found in this project.', 404));
+  }
+
+  // Delete from Cloudinary
+  try {
+    console.log('[Project Controller] Deleting media file from Cloudinary:', url);
+    await deleteFromCloudinary(url);
+  } catch (err) {
+    console.error('[Project Controller Cleanup] Failed to delete project media file:', err.message);
+  }
+
+  await project.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Media file deleted successfully',
+    data: project,
+  });
+});
+
 module.exports = {
   createProject,
   getAllProjects,
@@ -314,4 +419,6 @@ module.exports = {
   updateProject,
   deleteProject,
   getClientProjects,
+  uploadProjectMedia,
+  deleteProjectMedia,
 };

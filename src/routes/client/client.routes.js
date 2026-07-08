@@ -21,6 +21,7 @@ const {
 const {
   getPublishedArticles,
   getPublishedArticleById,
+  subscribeToNewsletter,
 } = require('../../controllers/super-admin/article.controller');
 
 const {
@@ -85,6 +86,7 @@ router.post('/settings/change-password/verify-otp', verifyChangePasswordOtpRules
 // 7. News & Articles (Reader)
 router.get('/articles', getPublishedArticles);
 router.get('/articles/:id', getPublishedArticleById);
+router.post('/articles/subscribe', subscribeToNewsletter);
 
 // 8. Assigned Perks (Client view)
 router.get('/perks', getMyPerks);

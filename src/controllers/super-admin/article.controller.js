@@ -1,4 +1,5 @@
 const Article = require('../../models/Article.model');
+const NewsletterSubscription = require('../../models/NewsletterSubscription.model');
 const { uploadBufferToCloudinary, deleteFromCloudinary } = require('../../services/cloudinary.service');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
@@ -45,6 +46,10 @@ const createArticle = asyncHandler(async (req, res, next) => {
     featuredImage: featuredImageUrl,
     createdBy: req.user.id,
   });
+
+  if (article.status === 'Published') {
+    triggerNewsletterEmails(article);
+  }
 
   res.status(201).json({
     success: true,
@@ -132,6 +137,8 @@ const updateArticle = asyncHandler(async (req, res, next) => {
     return next(new AppError('Article not found', 404));
   }
 
+  const oldStatus = article.status;
+
   const updates = {};
   const allowedFields = [
     'title',
@@ -183,6 +190,10 @@ const updateArticle = asyncHandler(async (req, res, next) => {
     { $set: updates },
     { new: true, runValidators: true }
   ).populate('createdBy', 'name email');
+
+  if (updatedArticle.status === 'Published' && oldStatus !== 'Published') {
+    triggerNewsletterEmails(updatedArticle);
+  }
 
   res.status(200).json({
     success: true,
@@ -282,6 +293,78 @@ const getPublishedArticleById = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * Subscribe an email address to KFPL Insights newsletter
+ * POST /api/client/articles/subscribe
+ */
+const subscribeToNewsletter = asyncHandler(async (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return next(new AppError('Please provide an email address.', 400));
+  }
+
+  // Basic email format check
+  const emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
+  if (!emailRegex.test(email)) {
+    return next(new AppError('Please provide a valid email address.', 400));
+  }
+
+  const existing = await NewsletterSubscription.findOne({ email: email.trim().toLowerCase() });
+  if (existing) {
+    if (!existing.active) {
+      existing.active = true;
+      await existing.save();
+    }
+    return res.status(200).json({
+      success: true,
+      message: 'You have successfully subscribed to KFPL Insights.',
+    });
+  }
+
+  await NewsletterSubscription.create({ email: email.trim().toLowerCase() });
+
+  res.status(201).json({
+    success: true,
+    message: 'You have successfully subscribed to KFPL Insights.',
+  });
+});
+
+/**
+ * Trigger background emails to all active newsletter subscribers
+ */
+const triggerNewsletterEmails = async (article) => {
+  try {
+    const subscriptions = await NewsletterSubscription.find({ active: true });
+    const emails = subscriptions.map((sub) => sub.email);
+
+    if (emails.length > 0) {
+      console.log(`[Newsletter] Dispatching to ${emails.length} subscribers for article '${article.title}'...`);
+      const { sendNewArticleNotification } = require('../../services/email.service');
+      const EmailLog = require('../../models/EmailLog.model');
+
+      // Dispatch emails concurrently
+      await Promise.allSettled(emails.map((email) => sendNewArticleNotification(email, article)));
+
+      // Log to sent email log history
+      try {
+        await EmailLog.create({
+          subject: `KFPL Insights: New Article Released – ${article.title}`,
+          recipientGroup: 'Bulk Group',
+          targetSummary: `All Newsletter Subscribers (${emails.length} recipient${emails.length > 1 ? 's' : ''} total)`,
+          templateName: 'Custom Email (Blank)',
+          attachmentsCount: 0,
+          recipientEmails: emails,
+        });
+      } catch (logErr) {
+        console.error('Failed to log newsletter broadcast in EmailLog:', logErr.message);
+      }
+    }
+  } catch (err) {
+    console.error('[Newsletter Trigger Error] Failed to process dispatch:', err.message);
+  }
+};
+
 module.exports = {
   createArticle,
   getAllArticles,
@@ -290,4 +373,5 @@ module.exports = {
   deleteArticle,
   getPublishedArticles,
   getPublishedArticleById,
+  subscribeToNewsletter,
 };

@@ -18,6 +18,10 @@ const {
 } = require('../../controllers/agent/agent-dashboard.controller');
 
 const {
+  getAgentPerformanceRewards,
+} = require('../../controllers/super-admin/performance-reward.controller');
+
+const {
   getPublishedArticles,
   getPublishedArticleById,
 } = require('../../controllers/super-admin/article.controller');
@@ -82,5 +86,8 @@ router.route('/transactions')
 // 10. Agent direct messaging/notifications
 const { sendAgentNotificationEmail } = require('../../controllers/agent/notification.controller');
 router.post('/notifications/send-email', sendAgentNotificationEmail);
+
+// 11. Performance Rewards Catalog (Agent view)
+router.get('/rewards', getAgentPerformanceRewards);
 
 module.exports = router;

@@ -55,6 +55,7 @@ const {
   getAgentCommissions,
   updateAgentStatus,
   verifyAgentDocument,
+  payAgentCommission,
 } = require('../../controllers/super-admin/agent-management.controller');
 
 const {
@@ -91,7 +92,7 @@ const {
   updateClientStatusRules,
 } = require('../../validations/super-admin/client-portal.validation');
 
-const { upload, memoryUpload } = require('../../middlewares/upload.middleware');
+const { upload, memoryUpload, rewardsUpload, anyUpload } = require('../../middlewares/upload.middleware');
 
 const {
   createArticle,
@@ -128,6 +129,8 @@ const {
   getProjectById,
   updateProject,
   deleteProject,
+  uploadProjectMedia,
+  deleteProjectMedia,
 } = require('../../controllers/super-admin/project.controller');
 
 const {
@@ -158,6 +161,28 @@ const {
   createPoolValidationRules,
   createAllotmentValidationRules,
 } = require('../../validations/super-admin/dividend.validation');
+
+const {
+  getRewardsConfig,
+  updateRewardsConfig,
+} = require('../../controllers/super-admin/rewards-config.controller');
+
+const {
+  updateRewardsConfigRules,
+} = require('../../validations/super-admin/rewards-config.validation');
+
+const {
+  createPerformanceReward,
+  getAllPerformanceRewards,
+  getPerformanceRewardById,
+  updatePerformanceReward,
+  deletePerformanceReward,
+} = require('../../controllers/super-admin/performance-reward.controller');
+
+const {
+  createRewardValidationRules,
+  updateRewardValidationRules,
+} = require('../../validations/super-admin/performance-reward.validation');
 
 // Configure Multer field parsing for client onboarding documents
 const clientOnboardingUpload = upload.fields([
@@ -253,6 +278,7 @@ router.route('/agents/:id')
 
 router.get('/agents/:id/clients', getAgentClients);
 router.get('/agents/:id/commissions', getAgentCommissions);
+router.patch('/agents/commissions/:commissionId/pay', payAgentCommission);
 router.patch('/agents/:id/status', updateAgentStatus);
 router.patch('/agents/:id/verify-document', verifyAgentDocument);
 
@@ -286,13 +312,87 @@ router.get('/activity-logs', (req, res) => {
 });
 
 // 18. Custom Email Broadcasts & Direct Notifications
-const { sendDirectEmail } = require('../../controllers/super-admin/notification.controller');
-router.post('/notifications/send-email', sendDirectEmail);
+const {
+  sendDirectEmail,
+  triggerScheduledEmailsProcess,
+  getTemplates,
+  createTemplate,
+  updateTemplate,
+  deleteTemplate,
+  getTriggers,
+  toggleTrigger,
+  getLogs,
+  getMetrics
+} = require('../../controllers/super-admin/notification.controller');
+
+router.post('/notifications/send-email', anyUpload.any(), sendDirectEmail);
+router.post('/notifications/process-scheduled', triggerScheduledEmailsProcess);
+
+// Custom Templates CRUD
+router.get('/notifications/templates', getTemplates);
+router.post('/notifications/templates', createTemplate);
+router.patch('/notifications/templates/:id', updateTemplate);
+router.delete('/notifications/templates/:id', deleteTemplate);
+
+// Auto Trigger Config
+router.get('/notifications/triggers', getTriggers);
+router.patch('/notifications/triggers/:id/toggle', toggleTrigger);
+
+// History Logs & Dashboard Metrics
+router.get('/notifications/logs', getLogs);
+router.get('/notifications/metrics', getMetrics);
 
 // 9. Agreement Uploads
 router.route('/agreements')
   .get((req, res) => res.status(200).json({ status: 'success', message: 'List Agreements placeholder' }))
-  .post((req, res) => res.status(201).json({ status: 'success', message: 'Upload Agreement placeholder' }));
+  .post(require('../../utils/asyncHandler')(async (req, res, next) => {
+    const User = require('../../models/User.model');
+    const AppError = require('../../utils/AppError');
+    const { trackAndSendSystemEmail } = require('../../services/email.service');
+
+    const { clientId, agreementTitle } = req.body;
+    if (!clientId) {
+      return next(new AppError('Please provide a client ID.', 400));
+    }
+
+    const client = await User.findById(clientId);
+    if (!client || client.role !== 'client') {
+      return next(new AppError('Client not found.', 404));
+    }
+
+    const title = agreementTitle || 'Investment Agreement';
+    const subject = `Kinetoscope – New Agreement Uploaded: ${title}`;
+    const text = `Hello ${client.name},\n\nA new agreement document (${title}) has been uploaded to your portal for review.\n\nBest regards,\nKinetoscope Team`;
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 540px; margin: auto; padding: 32px; border: 1px solid #e5e7eb; border-radius: 8px;">
+        <h2 style="color: #1e3a8a; margin-bottom: 16px;">New Agreement Uploaded</h2>
+        <p style="color: #4b5563; font-size: 14px;">Hello <strong>${client.name}</strong>,</p>
+        <p style="color: #4b5563; font-size: 14px;">A new agreement document has been uploaded to your profile:</p>
+        <div style="background: #f8fafc; border-radius: 6px; padding: 20px; border: 1px solid #e2e8f0; margin: 20px 0;">
+          <strong style="color: #0f172a; font-size: 15px;">${title}</strong>
+        </div>
+        <p style="color: #4b5563; font-size: 14px;">Please log in to the Client Portal to review, sign, or download your agreement.</p>
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+        <p style="color: #94a3b8; font-size: 11px; text-align: center;">Kross Film Productions Ltd. (KFPL)</p>
+      </div>
+    `;
+
+    try {
+      await trackAndSendSystemEmail('agreement_uploaded', {
+        to: client.email,
+        subject,
+        text,
+        html,
+        recipientGroup: 'Individual',
+        targetSummary: `${client.name}`,
+        templateName: 'Welcome Investor Kit'
+      });
+    } catch (err) {
+      console.error('Failed to send agreement uploaded notification:', err.message);
+    }
+
+    res.status(201).json({ status: 'success', message: 'Agreement uploaded successfully and notification sent.' });
+  }));
 // 10. Settings — 2FA and profile preferences
 router.get('/settings', getSettings);
 router.patch('/settings/2fa', toggle2FA);
@@ -332,6 +432,10 @@ router.route('/projects/:id')
   .patch(memoryUpload.single('bannerImage'), updateProjectValidationRules, updateProject)
   .delete(deleteProject);
 
+router.route('/projects/:id/media')
+  .post(memoryUpload.any(), uploadProjectMedia)
+  .delete(deleteProjectMedia);
+
 // 16. Segment & Status Management
 router.route('/segments')
   .get(getAllSegments)
@@ -346,5 +450,26 @@ router.get('/dividends/stats', getDividendStats);
 router.get('/dividends/allotments', getAllAllotments);
 router.post('/dividends/pools', createPoolValidationRules, createPool);
 router.post('/dividends/allotments', createAllotmentValidationRules, createAllotment);
+
+// 18. Rewards & Withdrawal Configuration
+router.route('/rewards-config')
+  .get(getRewardsConfig)
+  .patch(updateRewardsConfigRules, updateRewardsConfig);
+
+// Configure Multer fields parsing for performance reward media uploads
+const rewardMediaUpload = rewardsUpload.fields([
+  { name: 'rewardImage', maxCount: 1 },
+  { name: 'rewardVideo', maxCount: 1 },
+]);
+
+// 19. Performance Reward Catalog Management
+router.route('/rewards')
+  .get(getAllPerformanceRewards)
+  .post(rewardMediaUpload, createRewardValidationRules, createPerformanceReward);
+
+router.route('/rewards/:id')
+  .get(getPerformanceRewardById)
+  .patch(rewardMediaUpload, updateRewardValidationRules, updatePerformanceReward)
+  .delete(deletePerformanceReward);
 
 module.exports = router;

@@ -9,10 +9,24 @@ const asyncHandler = require('../../utils/asyncHandler');
  * Seed default dividend pool and allotments if database is empty
  */
 const seedMockDividends = async (creatorId) => {
+  const mongoose = require('mongoose');
+  const SystemConfig = mongoose.models.SystemConfig || mongoose.model('SystemConfig', new mongoose.Schema({
+    key: { type: String, unique: true },
+    value: Boolean
+  }));
+
+  const config = await SystemConfig.findOne({ key: 'dividends_seeded' });
+  if (config && config.value) {
+    return;
+  }
+
   const poolCount = await DividendPool.countDocuments();
   const allotmentCount = await DividendAllotment.countDocuments();
 
-  if (poolCount > 0 || allotmentCount > 0) return;
+  if (poolCount > 0 || allotmentCount > 0) {
+    await SystemConfig.findOneAndUpdate({ key: 'dividends_seeded' }, { value: true }, { upsert: true });
+    return;
+  }
 
   // 1. Seed standard pool of ₹15.00 L
   const defaultPool = await DividendPool.create({
@@ -75,6 +89,7 @@ const seedMockDividends = async (creatorId) => {
   ];
 
   await DividendAllotment.create(mockAllotments);
+  await SystemConfig.findOneAndUpdate({ key: 'dividends_seeded' }, { value: true }, { upsert: true });
   console.log('[Dividend Seeder] Successfully seeded standard allotments matching screenshot.');
 };
 
@@ -83,12 +98,13 @@ const seedMockDividends = async (creatorId) => {
  * POST /api/super-admin/dividends/pools
  */
 const createPool = asyncHandler(async (req, res, next) => {
-  const { poolAmount, name, remarks } = req.body;
+  const { poolAmount, name, remarks, projectId } = req.body;
 
   const pool = await DividendPool.create({
     poolAmount: Number(poolAmount),
     name: name || 'General Pool',
     remarks: remarks || '',
+    projectId: projectId || undefined,
     createdBy: req.user.id,
   });
 
@@ -120,11 +136,12 @@ const createAllotment = asyncHandler(async (req, res, next) => {
 
   const amt = Number(allottedAmount);
 
-  // Validate pool limit
-  const poolSum = await DividendPool.find().lean();
+  // Validate pool limit (project-specific if projectId is specified)
+  const query = projectId ? { projectId } : {};
+  const poolSum = await DividendPool.find(query).lean();
   const totalPools = poolSum.reduce((sum, p) => sum + p.poolAmount, 0);
 
-  const allotmentSum = await DividendAllotment.find().lean();
+  const allotmentSum = await DividendAllotment.find(query).lean();
   const totalAllotments = allotmentSum.reduce((sum, a) => sum + a.allottedAmount, 0);
 
   const remainingBalance = totalPools - totalAllotments;
@@ -154,10 +171,13 @@ const createAllotment = asyncHandler(async (req, res, next) => {
 const getDividendStats = asyncHandler(async (req, res, next) => {
   await seedMockDividends(req.user.id);
 
-  const poolSum = await DividendPool.find().lean();
+  const { projectId } = req.query;
+  const query = projectId ? { projectId } : {};
+
+  const poolSum = await DividendPool.find(query).lean();
   const totalPoolsConfigured = poolSum.reduce((sum, p) => sum + p.poolAmount, 0);
 
-  const allotmentSum = await DividendAllotment.find().lean();
+  const allotmentSum = await DividendAllotment.find(query).lean();
   const dividendsDistributed = allotmentSum.reduce((sum, a) => sum + a.allottedAmount, 0);
 
   const remainingPoolsBalance = totalPoolsConfigured - dividendsDistributed;

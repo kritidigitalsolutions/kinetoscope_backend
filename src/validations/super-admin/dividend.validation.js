@@ -33,6 +33,10 @@ const createPoolValidationRules = [
     .trim()
     .isString().withMessage('Remarks must be a string'),
 
+  body('projectId')
+    .optional()
+    .isMongoId().withMessage('Project ID must be a valid MongoDB ObjectId'),
+
   validate,
 ];
 

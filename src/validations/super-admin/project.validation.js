@@ -50,7 +50,18 @@ const createProjectValidationRules = [
 
   body('milestoneProgress')
     .optional()
-    .isInt({ min: 0, max: 100 }).withMessage('Milestone progress must be an integer between 0 and 100'),
+    .customSanitizer(val => {
+      if (typeof val === 'string') {
+        const cleaned = val.replace(/[^0-9]/g, '');
+        return cleaned ? parseInt(cleaned, 10) : 0;
+      }
+      return val;
+    })
+    .isInt({ min: 0, max: 100 }).withMessage('Milestone progress must be between 0 and 100'),
+
+  body('mediaFiles')
+    .optional()
+    .isArray().withMessage('Media files must be an array of string URLs'),
 
   body('health')
     .optional()
@@ -106,7 +117,18 @@ const updateProjectValidationRules = [
 
   body('milestoneProgress')
     .optional()
-    .isInt({ min: 0, max: 100 }).withMessage('Milestone progress must be an integer between 0 and 100'),
+    .customSanitizer(val => {
+      if (typeof val === 'string') {
+        const cleaned = val.replace(/[^0-9]/g, '');
+        return cleaned ? parseInt(cleaned, 10) : 0;
+      }
+      return val;
+    })
+    .isInt({ min: 0, max: 100 }).withMessage('Milestone progress must be between 0 and 100'),
+
+  body('mediaFiles')
+    .optional()
+    .isArray().withMessage('Media files must be an array of string URLs'),
 
   body('health')
     .optional()

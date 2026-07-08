@@ -2,6 +2,7 @@ const fs = require('fs');
 const mongoose = require('mongoose');
 const User = require('../../models/User.model');
 const ClientProfile = require('../../models/ClientProfile.model');
+const Investment = require('../../models/Investment.model');
 const { deleteFromCloudinary, processDocumentUploadsInBackground, uploadDocumentsToCloudinaryParallelBackground } = require('../../services/cloudinary.service');
 const { sendWelcomeEmail, sendKycVerificationNotification } = require('../../services/email.service');
 const { calculateDashboardData } = require('../client/client-dashboard.controller');
@@ -99,6 +100,15 @@ const createClient = asyncHandler(async (req, res, next) => {
   } = req.body;
 
   const finalTier = tier || 'SILVER';
+
+  // Validate initial tier eligibility (since new clients have 0 investments, they must start as SILVER)
+  if (finalTier.toUpperCase() !== 'SILVER') {
+    cleanupLocalFiles(req.files);
+    const minRequiredStr = finalTier.toUpperCase() === 'GOLD' ? '₹25 Lakh' : 
+                           finalTier.toUpperCase() === 'PLATINUM' ? '₹1 Crore' : 
+                           finalTier.toUpperCase() === 'DIAMOND' ? '₹3 Crore' : '₹0';
+    return next(new AppError(`This client is not eligible for the ${tier} category. Minimum investment required is ${minRequiredStr}. Current total investment is ₹0.`, 400));
+  }
   let finalContractStartDate = contractStartDate ? new Date(contractStartDate) : new Date();
   let finalContractEndDate = contractEndDate ? new Date(contractEndDate) : null;
   if (!finalContractEndDate) {
@@ -331,6 +341,43 @@ const updateClient = asyncHandler(async (req, res, next) => {
   const profile = await ClientProfile.findOne({ userId });
   if (!profile) {
     return next(new AppError('Client profile record not found.', 404));
+  }
+
+  // Validate tier change eligibility if tier is being modified
+  if (req.body.tier) {
+    const normalizedTier = req.body.tier.toUpperCase();
+    const investments = await Investment.find({ clientId: userId }).lean();
+    const validInvestments = investments.filter(inv => inv.status !== 'cancelled');
+    const totalInvestment = validInvestments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
+
+    const TIER_LIMITS = {
+      SILVER: 0,
+      GOLD: 2500000,      // 25 Lakh
+      PLATINUM: 10000000,  // 1 Crore
+      DIAMOND: 30000000    // 3 Crore
+    };
+
+    const minRequired = TIER_LIMITS[normalizedTier];
+    if (minRequired === undefined) {
+      cleanupLocalFiles(req.files);
+      return next(new AppError(`Invalid tier category: ${req.body.tier}`, 400));
+    }
+
+    if (totalInvestment < minRequired) {
+      cleanupLocalFiles(req.files);
+      
+      const minRequiredStr = normalizedTier === 'GOLD' ? '₹25 Lakh' : 
+                             normalizedTier === 'PLATINUM' ? '₹1 Crore' : 
+                             normalizedTier === 'DIAMOND' ? '₹3 Crore' : '₹0';
+                             
+      const formatter = new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        maximumFractionDigits: 0
+      });
+
+      return next(new AppError(`This client is not eligible for the ${req.body.tier} category. Minimum investment required is ${minRequiredStr}. Current total investment is ${formatter.format(totalInvestment)}.`, 400));
+    }
   }
 
   // 2) Parse updates for the User model

@@ -56,6 +56,10 @@ const projectSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    mediaFiles: {
+      type: [String],
+      default: [],
+    },
     summary: {
       type: String,
       default: '',

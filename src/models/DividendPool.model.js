@@ -10,6 +10,11 @@ const dividendPoolSchema = new mongoose.Schema(
       required: [true, 'Pool amount is required'],
       min: [0.01, 'Pool amount must be a positive number'],
     },
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project',
+      required: false,
+    },
     name: {
       type: String,
       default: 'General Pool',
