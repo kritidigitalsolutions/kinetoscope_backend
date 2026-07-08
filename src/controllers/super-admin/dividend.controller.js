@@ -224,11 +224,28 @@ const getAllAllotments = asyncHandler(async (req, res, next) => {
     });
   }
 
+  // Compute stats for frontend summary cards
+  const poolSum = await DividendPool.find().lean();
+  const totalPoolsConfigured = poolSum.reduce((sum, p) => sum + p.poolAmount, 0);
+
+  const allAllotmentSum = await DividendAllotment.find().lean();
+  const dividendsDistributed = allAllotmentSum.reduce((sum, a) => sum + a.allottedAmount, 0);
+
+  const remainingPoolsBalance = totalPoolsConfigured - dividendsDistributed;
+
   res.status(200).json({
     success: true,
     count: allotments.length,
     data: {
       allotments,
+      totalPoolsConfigured,
+      dividendsDistributed,
+      remainingPoolsBalance,
+      stats: {
+        totalPoolsConfigured,
+        dividendsDistributed,
+        remainingPoolsBalance,
+      },
     },
   });
 });
