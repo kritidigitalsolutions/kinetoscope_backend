@@ -6,58 +6,10 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { ROLES } = require('../../constants/roles');
 
 /**
- * Seed default commission slabs and overrides to match screenshot mock data.
- */
-const seedMockSlabs = async (creatorId) => {
-  const slabCount = await CommissionSlab.countDocuments();
-  if (slabCount === 0) {
-    const mockSlabs = [
-      // One-Time Slabs
-      { type: 'one-time', minAmount: 0, maxAmount: 1000000, commissionPercentage: 1.0, createdBy: creatorId },
-      { type: 'one-time', minAmount: 1000000, maxAmount: 5000000, commissionPercentage: 1.5, createdBy: creatorId },
-      { type: 'one-time', minAmount: 5000000, maxAmount: null, commissionPercentage: 2.0, createdBy: creatorId },
-      // Monthly Slabs
-      { type: 'monthly', minAmount: 0, maxAmount: 1000000, commissionPercentage: 0.5, createdBy: creatorId },
-      { type: 'monthly', minAmount: 1000000, maxAmount: 5000000, commissionPercentage: 0.75, createdBy: creatorId },
-      { type: 'monthly', minAmount: 5000000, maxAmount: null, commissionPercentage: 1.0, createdBy: creatorId },
-    ];
-    await CommissionSlab.create(mockSlabs);
-    console.log('[Commission Slab Seeder] Default slabs seeded successfully.');
-  }
-
-  const overrideCount = await AgentOverride.countDocuments();
-  if (overrideCount === 0) {
-    // Find up to two existing agents to link overrides
-    const agents = await User.find({ role: ROLES.AGENT }).limit(2);
-    if (agents.length > 0) {
-      const mockOverrides = [
-        {
-          agentId: agents[0]._id,
-          commissionOverride: 0.5,
-          reason: 'Special override for high performance onboarding',
-          createdBy: creatorId,
-        },
-      ];
-      if (agents[1]) {
-        mockOverrides.push({
-          agentId: agents[1]._id,
-          commissionOverride: 0.5,
-          reason: 'Special manual override for milestone achievements',
-          createdBy: creatorId,
-        });
-      }
-      await AgentOverride.create(mockOverrides);
-      console.log('[Commission Override Seeder] Default overrides seeded successfully.');
-    }
-  }
-};
-
-/**
  * Get all Slabs (Optional filter by type)
  * GET /api/super-admin/commission-slabs
  */
 const getAllSlabs = asyncHandler(async (req, res, next) => {
-  await seedMockSlabs(req.user.id);
 
   const { type } = req.query;
   const query = type ? { type } : {};
@@ -148,7 +100,6 @@ const deleteSlab = asyncHandler(async (req, res, next) => {
  * GET /api/super-admin/commission-slabs/overrides
  */
 const getAllOverrides = asyncHandler(async (req, res, next) => {
-  await seedMockSlabs(req.user.id);
 
   const overrides = await AgentOverride.find()
     .populate('agentId', 'name email clientCode')
