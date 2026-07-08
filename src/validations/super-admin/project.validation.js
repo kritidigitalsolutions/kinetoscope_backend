@@ -46,7 +46,7 @@ const createProjectValidationRules = [
   body('riskLevel')
     .optional()
     .trim()
-    .isIn(['Low', 'Medium', 'High']).withMessage('Risk Level must be either Low, Medium, or High'),
+    .isIn(['Low', 'Medium', 'Medium High', 'High']).withMessage('Risk Level must be either Low, Medium, Medium High, or High'),
 
   body('milestoneProgress')
     .optional()
@@ -66,7 +66,7 @@ const createProjectValidationRules = [
   body('health')
     .optional()
     .trim()
-    .isIn(['On Track', 'Performing', 'At Risk', 'Under Review']).withMessage('Health must be either On Track, Performing, At Risk, or Under Review'),
+    .isIn(['On Track', 'Active', 'Performing', 'Building', 'Planned', 'At Risk', 'Completed', 'Under Review']).withMessage('Health must be either On Track, Active, Performing, Building, Planned, At Risk, Completed, or Under Review'),
 
   body('summary')
     .optional()
@@ -123,7 +123,7 @@ const updateProjectValidationRules = [
   body('riskLevel')
     .optional()
     .trim()
-    .isIn(['Low', 'Medium', 'High']).withMessage('Risk Level must be either Low, Medium, or High'),
+    .isIn(['Low', 'Medium', 'Medium High', 'High']).withMessage('Risk Level must be either Low, Medium, Medium High, or High'),
 
   body('milestoneProgress')
     .optional()
@@ -143,7 +143,7 @@ const updateProjectValidationRules = [
   body('health')
     .optional()
     .trim()
-    .isIn(['On Track', 'Performing', 'At Risk', 'Under Review']).withMessage('Health must be either On Track, Performing, At Risk, or Under Review'),
+    .isIn(['On Track', 'Active', 'Performing', 'Building', 'Planned', 'At Risk', 'Completed', 'Under Review']).withMessage('Health must be either On Track, Active, Performing, Building, Planned, At Risk, Completed, or Under Review'),
 
   body('summary')
     .optional()

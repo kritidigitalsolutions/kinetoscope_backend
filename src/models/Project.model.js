@@ -33,8 +33,8 @@ const projectSchema = new mongoose.Schema(
     riskLevel: {
       type: String,
       enum: {
-        values: ['Low', 'Medium', 'High'],
-        message: 'Risk Level must be either Low, Medium, or High',
+        values: ['Low', 'Medium', 'Medium High', 'High'],
+        message: 'Risk Level must be either Low, Medium, Medium High, or High',
       },
       default: 'Medium',
     },
@@ -47,8 +47,8 @@ const projectSchema = new mongoose.Schema(
     health: {
       type: String,
       enum: {
-        values: ['On Track', 'Performing', 'At Risk', 'Under Review'],
-        message: 'Health must be either On Track, Performing, At Risk, or Under Review',
+        values: ['On Track', 'Active', 'Performing', 'Building', 'Planned', 'At Risk', 'Completed', 'Under Review'],
+        message: 'Health must be either On Track, Active, Performing, Building, Planned, At Risk, Completed, or Under Review',
       },
       default: 'On Track',
     },
