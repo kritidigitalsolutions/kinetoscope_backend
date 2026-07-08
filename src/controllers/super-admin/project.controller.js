@@ -125,6 +125,8 @@ const createProject = asyncHandler(async (req, res, next) => {
     milestoneProgress,
     health,
     summary,
+    currentUpdate,
+    allocationFocus,
   } = req.body;
 
   let bannerImageUrl = '';
@@ -147,6 +149,8 @@ const createProject = asyncHandler(async (req, res, next) => {
     milestoneProgress: milestoneProgress !== undefined ? Number(milestoneProgress) : 0,
     health: health || 'On Track',
     summary: summary || '',
+    currentUpdate: currentUpdate || '',
+    allocationFocus: allocationFocus || '',
     bannerImage: bannerImageUrl,
     createdBy: req.user.id,
   });
@@ -229,6 +233,8 @@ const updateProject = asyncHandler(async (req, res, next) => {
     'health',
     'summary',
     'mediaFiles',
+    'currentUpdate',
+    'allocationFocus',
   ];
 
   allowedFields.forEach(field => {

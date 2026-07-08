@@ -65,6 +65,16 @@ const projectSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    currentUpdate: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    allocationFocus: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

@@ -73,6 +73,16 @@ const createProjectValidationRules = [
     .trim()
     .isString().withMessage('Summary must be a string'),
 
+  body('currentUpdate')
+    .optional()
+    .trim()
+    .isString().withMessage('Current update must be a string'),
+
+  body('allocationFocus')
+    .optional()
+    .trim()
+    .isString().withMessage('Allocation focus must be a string'),
+
   validate,
 ];
 
@@ -139,6 +149,16 @@ const updateProjectValidationRules = [
     .optional()
     .trim()
     .isString().withMessage('Summary must be a string'),
+
+  body('currentUpdate')
+    .optional()
+    .trim()
+    .isString().withMessage('Current update must be a string'),
+
+  body('allocationFocus')
+    .optional()
+    .trim()
+    .isString().withMessage('Allocation focus must be a string'),
 
   validate,
 ];
