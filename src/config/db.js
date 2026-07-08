@@ -17,6 +17,8 @@ const connectDB = async () => {
     console.log('MongoDB: No cached connection found. Establishing new connection...');
     const opts = {
       bufferCommands: false,
+      serverSelectionTimeoutMS: 5000, // Fail fast if connection cannot be established
+      socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
     };
 
     const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/kfpl';
