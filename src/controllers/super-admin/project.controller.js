@@ -354,7 +354,11 @@ const uploadProjectMedia = asyncHandler(async (req, res, next) => {
   let mediaUrl = '';
   try {
     console.log('[Project Controller] Uploading project media file to Cloudinary...');
-    mediaUrl = await uploadBufferToCloudinary(file.buffer, 'kinetoscope/projects/media');
+    mediaUrl = await uploadBufferToCloudinary(file.buffer, 'kinetoscope/projects/media', {
+      use_filename: true,
+      unique_filename: false,
+      filename: file.originalname,
+    });
   } catch (uploadError) {
     return next(new AppError(`Media upload failed: ${uploadError.message}`, 500));
   }

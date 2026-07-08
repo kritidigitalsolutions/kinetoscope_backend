@@ -119,12 +119,13 @@ const processDocumentUploadsInBackground = ({ files, fileFields, Model, filter, 
  * Upload a file buffer to Cloudinary and return the secure URL.
  * @param {Buffer} fileBuffer - Buffer of the file
  * @param {string} folder - Cloudinary folder name
+ * @param {Object} options - Custom Cloudinary options
  * @returns {Promise<string>} Cloudinary secure URL
  */
-const uploadBufferToCloudinary = (fileBuffer, folder = 'kinetoscope') => {
+const uploadBufferToCloudinary = (fileBuffer, folder = 'kinetoscope', options = {}) => {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
-      { folder, resource_type: 'auto' },
+      { folder, resource_type: 'auto', ...options },
       (error, result) => {
         if (error) return reject(error);
         resolve(result.secure_url);
