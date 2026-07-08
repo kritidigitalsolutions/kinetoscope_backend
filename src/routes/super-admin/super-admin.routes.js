@@ -218,6 +218,23 @@ const memoryAgentOnboardingUpload = memoryUpload.fields([
   { name: 'nomineeProofDocument', maxCount: 1 },
 ]);
 
+const {
+  slabValidationRules,
+  overrideValidationRules,
+} = require('../../validations/super-admin/commission-slab.validation');
+
+const {
+  getAllSlabs,
+  createSlab,
+  updateSlab,
+  deleteSlab,
+  getAllOverrides,
+  createOverride,
+  updateOverride,
+  deleteOverride,
+  calculateCommission,
+} = require('../../controllers/super-admin/commission-slab.controller');
+
 const router = express.Router();
 
 // Apply Auth and Role Guard to all Super Admin endpoints
@@ -471,5 +488,24 @@ router.route('/rewards/:id')
   .get(getPerformanceRewardById)
   .patch(rewardMediaUpload, updateRewardValidationRules, updatePerformanceReward)
   .delete(deletePerformanceReward);
+
+// 20. Commission Slab & Override Configurations
+router.route('/commission-slabs')
+  .get(getAllSlabs)
+  .post(slabValidationRules, createSlab);
+
+router.route('/commission-slabs/overrides')
+  .get(getAllOverrides)
+  .post(overrideValidationRules, createOverride);
+
+router.post('/commission-slabs/calculate', calculateCommission);
+
+router.route('/commission-slabs/overrides/:id')
+  .patch(overrideValidationRules, updateOverride)
+  .delete(deleteOverride);
+
+router.route('/commission-slabs/:id')
+  .patch(slabValidationRules, updateSlab)
+  .delete(deleteSlab);
 
 module.exports = router;
