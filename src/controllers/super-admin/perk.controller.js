@@ -10,6 +10,7 @@ const asyncHandler = require('../../utils/asyncHandler');
  * Seed standard mock perks if database is empty
  */
 const seedMockPerks = async () => {
+  return; // Disabled seeder
   const count = await Perk.countDocuments();
   if (count > 0) return;
 

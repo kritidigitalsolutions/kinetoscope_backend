@@ -11,6 +11,7 @@ const { seedMockProjects } = require('./project.controller');
  * Seed mock status updates history to match screen designs
  */
 const seedMockUpdateHistory = async (creatorId) => {
+  return; // Disabled seeder
   const count = await ProjectUpdate.countDocuments();
   if (count === 0) {
     await seedMockProjects(creatorId);

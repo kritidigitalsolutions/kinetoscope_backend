@@ -9,6 +9,7 @@ const asyncHandler = require('../../utils/asyncHandler');
  * Seed default dividend pool and allotments if database is empty
  */
 const seedMockDividends = async (creatorId) => {
+  return; // Disabled seeder
   const mongoose = require('mongoose');
   const SystemConfig = mongoose.models.SystemConfig || mongoose.model('SystemConfig', new mongoose.Schema({
     key: { type: String, unique: true },

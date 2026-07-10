@@ -6,6 +6,7 @@ const asyncHandler = require('../../utils/asyncHandler');
  * Seed standard segments if collection is empty
  */
 const seedMockSegments = async (creatorId) => {
+  return; // Disabled seeder
   const count = await Segment.countDocuments();
   if (count > 0) return;
 

@@ -10,6 +10,7 @@ const asyncHandler = require('../../utils/asyncHandler');
  * Seed default mock investments to align with designs
  */
 const seedMockInvestments = async (creatorId) => {
+  return; // Disabled seeder
   const count = await Investment.countDocuments();
   if (count === 0) {
     const getOrCreateMockClient = async (name, email, clientCode) => {

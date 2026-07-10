@@ -9,6 +9,7 @@ const asyncHandler = require('../../utils/asyncHandler');
  * Seed mock client return & agent commission payout logs to match screen designs
  */
 const seedMockPayouts = async (creatorId) => {
+  return; // Disabled seeder
   const roiCount = await RoiPayout.countDocuments();
   const commCount = await AgentCommission.countDocuments();
 

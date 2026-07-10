@@ -7,6 +7,7 @@ const asyncHandler = require('../../utils/asyncHandler');
  * Seed standard performance rewards if catalog is empty
  */
 const seedMockRewards = async (creatorId) => {
+  return; // Disabled seeder
   const count = await PerformanceReward.countDocuments();
   if (count > 0) return;
 

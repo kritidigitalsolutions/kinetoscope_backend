@@ -3,18 +3,18 @@ const ProjectUpdate = require('../../models/ProjectUpdate.model');
 const { uploadBufferToCloudinary, deleteFromCloudinary } = require('../../services/cloudinary.service');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
-
 /**
  * Seed default mock projects if catalog is empty
  */
 const seedMockProjects = async (creatorId) => {
+  return; // Disabled seeder
   const mongoose = require('mongoose');
   const SystemConfig = mongoose.models.SystemConfig || mongoose.model('SystemConfig', new mongoose.Schema({
     key: { type: String, unique: true },
     value: Boolean
   }));
 
-  const config = await SystemConfig.findOne({ key: 'projects_seeded' });
+const config = await SystemConfig.findOne({ key: 'projects_seeded' });
   if (config && config.value) {
     return;
   }
@@ -140,7 +140,7 @@ const createProject = asyncHandler(async (req, res, next) => {
     }
   }
 
-  const project = await Project.create({
+const project = await Project.create({
     name,
     segment,
     status,
@@ -177,7 +177,7 @@ const getAllProjects = asyncHandler(async (req, res, next) => {
     .lean();
 
   // Compute card stats
-  const totalProjects = projects.length;
+const totalProjects = projects.length;
   let avgProgress = 0;
   if (totalProjects > 0) {
     const progressSum = projects.reduce((sum, p) => sum + (p.milestoneProgress || 0), 0);
@@ -296,7 +296,7 @@ const updateProject = asyncHandler(async (req, res, next) => {
       { runValidators: true }
     );
 
-    const updatedProjects = await Project.find({ segment: targetSegment }).populate('createdBy', 'name email');
+  const updatedProjects = await Project.find({ segment: targetSegment }).populate('createdBy', 'name email');
 
     return res.status(200).json({
       success: true,
