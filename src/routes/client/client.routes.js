@@ -1,12 +1,14 @@
 const express = require('express');
 const { protect, restrictTo } = require('../../middlewares/auth.middleware');
 const { ROLES } = require('../../constants/roles');
+const { memoryUpload } = require('../../middlewares/upload.middleware');
 
 const {
   login,
   verify2FA,
   logout,
   getMe,
+  registerClient,
 } = require('../../controllers/client/client-auth.controller');
 
 const {
@@ -54,6 +56,13 @@ const {
 const router = express.Router();
 
 // --- PUBLIC CLIENT PORTAL AUTHENTICATION FLOW ---
+const clientRegisterUpload = memoryUpload.fields([
+  { name: 'panDocument', maxCount: 1 },
+  { name: 'aadhaarDocument', maxCount: 1 },
+  { name: 'bankProofDocument', maxCount: 1 },
+]);
+
+router.post('/auth/register', clientRegisterUpload, registerClient);
 router.post('/auth/login', login);
 router.post('/auth/verify-2fa', verify2FA);
 router.post('/auth/logout', logout);
@@ -111,5 +120,13 @@ router.route('/transactions')
 // 12. Client direct messaging/notifications
 const { sendClientNotificationEmail } = require('../../controllers/client/notification.controller');
 router.post('/notifications/send-email', sendClientNotificationEmail);
+
+// 13. Service Requests (Client view)
+const { createRequestRules } = require('../../validations/super-admin/service-request.validation');
+const { createServiceRequest, getMyServiceRequests } = require('../../controllers/super-admin/service-request.controller');
+
+router.route('/service-requests')
+  .get(getMyServiceRequests)
+  .post(memoryUpload.single('attachment'), createRequestRules, createServiceRequest);
 
 module.exports = router;

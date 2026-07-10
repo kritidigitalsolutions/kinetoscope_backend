@@ -24,9 +24,18 @@ const investmentSchema = new mongoose.Schema(
     },
     segment: {
       type: String,
-      required: [true, 'Segment is required'],
       trim: true,
     },
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project',
+    },
+    segmentAllocation: [
+      {
+        segmentName: { type: String, required: true },
+        allocationPercentage: { type: Number, required: true, min: 0, max: 100 },
+      }
+    ],
     investmentAmount: {
       type: Number,
       required: [true, 'Investment amount is required'],
@@ -41,6 +50,18 @@ const investmentSchema = new mongoose.Schema(
       type: Number,
       required: [true, 'Risk percentage is required'],
       min: [0, 'Risk percentage must be a non-negative number'],
+    },
+    riskLevel: {
+      type: String,
+      enum: ['Low', 'Medium', 'High', 'Medium High'],
+      default: 'Medium',
+    },
+    durationMonths: {
+      type: Number,
+      default: 24,
+    },
+    contractEndDate: {
+      type: Date,
     },
     investmentDate: {
       type: Date,
@@ -69,6 +90,22 @@ const investmentSchema = new mongoose.Schema(
     timestamps: true, // Automatically manages createdAt and updatedAt fields
   }
 );
+
+// Pre-save hook to calculate contractEndDate based on investmentDate and durationMonths if not provided
+investmentSchema.pre('save', async function () {
+  if (this.isNew || this.isModified('investmentDate') || this.isModified('durationMonths')) {
+    if (!this.contractEndDate && this.investmentDate) {
+      const start = new Date(this.investmentDate);
+      start.setMonth(start.getMonth() + (this.durationMonths || 24));
+      this.contractEndDate = start;
+    }
+  }
+
+  // Auto-populate segment name if empty but allocation exists
+  if (!this.segment && this.segmentAllocation && this.segmentAllocation.length > 0) {
+    this.segment = this.segmentAllocation.map(s => s.segmentName).join(', ');
+  }
+});
 
 // Indexes for efficient search and filter queries
 investmentSchema.index({ clientName: 1 });

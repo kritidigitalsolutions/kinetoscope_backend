@@ -26,9 +26,17 @@ const createInvestmentValidationRules = [
 
 
   body('segment')
+    .optional()
     .trim()
-    .notEmpty().withMessage('Segment is required')
     .isString().withMessage('Segment must be a string'),
+
+  body('projectId')
+    .optional()
+    .isMongoId().withMessage('Project ID must be a valid MongoDB ObjectId'),
+
+  body('segmentAllocation')
+    .optional()
+    .isArray().withMessage('Segment allocation must be an array'),
 
   body('investmentAmount')
     .notEmpty().withMessage('Investment amount is required')
@@ -49,6 +57,18 @@ const createInvestmentValidationRules = [
     .optional()
     .isISO8601().withMessage('Investment date must be a valid ISO 8601 date'),
 
+  body('riskLevel')
+    .optional()
+    .isIn(['Low', 'Medium', 'High', 'Medium High']).withMessage('Risk level must be Low, Medium, High, or Medium High'),
+
+  body('durationMonths')
+    .optional()
+    .isNumeric().withMessage('Duration must be a number'),
+
+  body('contractEndDate')
+    .optional()
+    .isISO8601().withMessage('Contract end date must be a valid ISO 8601 date'),
+
   body('status')
     .optional()
     .isIn(['active', 'completed', 'cancelled']).withMessage('Status must be active, completed, or cancelled'),
@@ -60,6 +80,18 @@ const createInvestmentValidationRules = [
   validate,
 ];
 
+/**
+ * Validation rules for extending an investment contract.
+ */
+const extendContractValidationRules = [
+  body('newEndDate')
+    .notEmpty().withMessage('New end date is required')
+    .isISO8601().withMessage('New end date must be a valid date'),
+
+  validate,
+];
+
 module.exports = {
   createInvestmentValidationRules,
+  extendContractValidationRules,
 };

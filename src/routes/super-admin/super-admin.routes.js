@@ -5,9 +5,11 @@ const {
   createInvestment,
   getAllInvestments,
   getInvestmentById,
+  extendInvestmentContract,
 } = require('../../controllers/super-admin/investment.controller');
 const {
   createInvestmentValidationRules,
+  extendContractValidationRules,
 } = require('../../validations/super-admin/investment.validation');
 const {
   getSettings,
@@ -220,7 +222,9 @@ const memoryAgentOnboardingUpload = memoryUpload.fields([
 
 const {
   slabValidationRules,
+  updateSlabValidationRules,
   overrideValidationRules,
+  updateOverrideValidationRules,
 } = require('../../validations/super-admin/commission-slab.validation');
 
 const {
@@ -277,6 +281,8 @@ router.route('/investments')
 
 router.route('/investments/:id')
   .get(getInvestmentById);
+
+router.patch('/investments/:id/extend', extendContractValidationRules, extendInvestmentContract);
 
 // 4. ROI Management
 router.route('/roi')
@@ -453,6 +459,14 @@ router.route('/projects/:id/media')
   .post(memoryUpload.any(), uploadProjectMedia)
   .delete(deleteProjectMedia);
 
+// 15b. Project Update History & Status Updates (Investment Status views)
+const { publishProjectUpdate, getUpdateHistory, uploadUpdateAttachment } = require('../../controllers/super-admin/project-update.controller');
+const { publishUpdateValidationRules } = require('../../validations/super-admin/project-update.validation');
+
+router.get('/projects/updates/history', getUpdateHistory);
+router.post('/projects/:id/updates', publishUpdateValidationRules, publishProjectUpdate);
+router.post('/projects/:id/updates/attachments', memoryUpload.single('file'), uploadUpdateAttachment);
+
 // 16. Segment & Status Management
 router.route('/segments')
   .get(getAllSegments)
@@ -501,11 +515,25 @@ router.route('/commission-slabs/overrides')
 router.post('/commission-slabs/calculate', calculateCommission);
 
 router.route('/commission-slabs/overrides/:id')
-  .patch(overrideValidationRules, updateOverride)
+  .patch(updateOverrideValidationRules, updateOverride)
   .delete(deleteOverride);
 
 router.route('/commission-slabs/:id')
-  .patch(slabValidationRules, updateSlab)
+  .patch(updateSlabValidationRules, updateSlab)
   .delete(deleteSlab);
+
+// 21. Service Requests Management (Super Admin view)
+const { updateRequestStatusRules } = require('../../validations/super-admin/service-request.validation');
+const { getAllServiceRequests, getServiceRequestById, updateServiceRequestStatus, deleteServiceRequest } = require('../../controllers/super-admin/service-request.controller');
+
+router.route('/service-requests')
+  .get(getAllServiceRequests);
+
+router.route('/service-requests/:id/status')
+  .patch(updateRequestStatusRules, updateServiceRequestStatus);
+
+router.route('/service-requests/:id')
+  .get(getServiceRequestById)
+  .delete(deleteServiceRequest);
 
 module.exports = router;

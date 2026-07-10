@@ -90,4 +90,13 @@ router.post('/notifications/send-email', sendAgentNotificationEmail);
 // 11. Performance Rewards Catalog (Agent view)
 router.get('/rewards', getAgentPerformanceRewards);
 
+// 12. Service Requests (Agent view)
+const { createRequestRules } = require('../../validations/super-admin/service-request.validation');
+const { createServiceRequest, getMyServiceRequests } = require('../../controllers/super-admin/service-request.controller');
+const { memoryUpload } = require('../../middlewares/upload.middleware');
+
+router.route('/service-requests')
+  .get(getMyServiceRequests)
+  .post(memoryUpload.single('attachment'), createRequestRules, createServiceRequest);
+
 module.exports = router;

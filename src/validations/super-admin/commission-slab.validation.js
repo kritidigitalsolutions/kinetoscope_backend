@@ -76,7 +76,70 @@ const overrideValidationRules = [
   validate,
 ];
 
+/**
+ * Validation rules for updating an existing Commission Slab (all fields optional).
+ */
+const updateSlabValidationRules = [
+  body('type')
+    .optional()
+    .trim()
+    .isIn(['one-time', 'monthly']).withMessage('Slab type must be either one-time or monthly'),
+
+  body('minAmount')
+    .optional()
+    .isNumeric().withMessage('Minimum investment amount must be a number')
+    .isFloat({ min: 0 }).withMessage('Minimum investment amount cannot be negative'),
+
+  body('maxAmount')
+    .optional({ nullable: true })
+    .custom((value) => {
+      if (value !== null && value !== undefined && isNaN(value)) {
+        throw new Error('Maximum investment amount must be a number or null');
+      }
+      if (value !== null && value !== undefined && Number(value) < 0) {
+        throw new Error('Maximum investment amount cannot be negative');
+      }
+      return true;
+    }),
+
+  body('commissionPercentage')
+    .optional()
+    .isNumeric().withMessage('Commission percentage must be a number')
+    .isFloat({ min: 0 }).withMessage('Commission percentage cannot be negative'),
+
+  validate,
+];
+
+/**
+ * Validation rules for updating an existing Special Agent Override (all fields optional).
+ */
+const updateOverrideValidationRules = [
+  body('agentId')
+    .optional()
+    .trim()
+    .custom((val) => {
+      if (!mongoose.Types.ObjectId.isValid(val)) {
+        throw new Error('Invalid Agent ID format');
+      }
+      return true;
+    }),
+
+  body('commissionOverride')
+    .optional()
+    .isNumeric().withMessage('Commission override percentage must be a number')
+    .isFloat({ min: 0 }).withMessage('Commission override percentage cannot be negative'),
+
+  body('reason')
+    .optional()
+    .trim()
+    .isString().withMessage('Reason must be a string'),
+
+  validate,
+];
+
 module.exports = {
   slabValidationRules,
+  updateSlabValidationRules,
   overrideValidationRules,
+  updateOverrideValidationRules,
 };

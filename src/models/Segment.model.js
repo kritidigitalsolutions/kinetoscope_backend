@@ -16,6 +16,10 @@ const segmentSchema = new mongoose.Schema(
       required: [true, 'Statuses list is required'],
       default: ['Planning', 'Active', 'Ongoing', 'Completed'],
     },
+    isDefault: {
+      type: Boolean,
+      default: false,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

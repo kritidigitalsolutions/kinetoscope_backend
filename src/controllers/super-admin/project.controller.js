@@ -281,6 +281,30 @@ const updateProject = asyncHandler(async (req, res, next) => {
     }
   }
 
+  const isSegmentWide = req.body.scope === 'segment' || req.body.segmentWide === true || req.body.applySegmentWide === true;
+
+  if (isSegmentWide) {
+    const targetSegment = updates.segment || project.segment;
+    // Don't change specific project names on a segment-wide update
+    const segmentUpdates = { ...updates };
+    delete segmentUpdates.name;
+
+    await Project.updateMany(
+      { segment: targetSegment },
+      { $set: segmentUpdates },
+      { runValidators: true }
+    );
+
+    const updatedProjects = await Project.find({ segment: targetSegment }).populate('createdBy', 'name email');
+
+    return res.status(200).json({
+      success: true,
+      message: `Segment-wide updates applied to all projects in ${targetSegment}`,
+      segmentWide: true,
+      data: updatedProjects,
+    });
+  }
+
   const updatedProject = await Project.findByIdAndUpdate(
     req.params.id,
     { $set: updates },

@@ -6,6 +6,84 @@ const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 
 /**
+ * Seed default mock investments to align with designs
+ */
+const seedMockInvestments = async (creatorId) => {
+  const count = await Investment.countDocuments();
+  if (count === 0) {
+    const getOrCreateMockClient = async (name, email, clientCode) => {
+      let user = await User.findOne({ clientCode });
+      if (!user) {
+        user = await User.create({
+          name,
+          email,
+          password: 'password123',
+          role: ROLES.CLIENT,
+          clientCode,
+          isActive: true,
+        });
+      }
+      return user;
+    };
+
+    const c1 = await getOrCreateMockClient('Rajesh Kumar', 'rajesh.kumar@kfpl.com', 'KFPL-1001');
+    const c2 = await getOrCreateMockClient('Priya Sharma', 'priya.sharma@kfpl.com', 'KFPL-1002');
+    const c3 = await getOrCreateMockClient('Anita Desai', 'anita.desai@kfpl.com', 'KFPL-1003');
+
+    const mockInvestments = [
+      {
+        clientId: c1._id,
+        clientName: c1.name,
+        clientCode: c1.clientCode,
+        segment: 'Film Making',
+        investmentAmount: 25000000, // 2.50 Cr
+        roiPercentage: 12,
+        riskPercentage: 30,
+        riskLevel: 'Medium',
+        investmentDate: new Date('2024-01-10T00:00:00Z'),
+        durationMonths: 24,
+        contractEndDate: new Date('2026-01-10T00:00:00Z'),
+        status: 'active',
+        createdBy: creatorId,
+      },
+      {
+        clientId: c2._id,
+        clientName: c2.name,
+        clientCode: c2.clientCode,
+        segment: 'Film Making',
+        investmentAmount: 18000000, // 1.80 Cr
+        roiPercentage: 12,
+        riskPercentage: 10,
+        riskLevel: 'Low',
+        investmentDate: new Date('2024-01-15T00:00:00Z'),
+        durationMonths: 24,
+        contractEndDate: new Date('2026-01-15T00:00:00Z'),
+        status: 'active',
+        createdBy: creatorId,
+      },
+      {
+        clientId: c3._id,
+        clientName: c3.name,
+        clientCode: c3.clientCode,
+        segment: 'Film Making',
+        investmentAmount: 12000000, // 1.20 Cr
+        roiPercentage: 12,
+        riskPercentage: 75,
+        riskLevel: 'High',
+        investmentDate: new Date('2024-01-20T00:00:00Z'),
+        durationMonths: 24,
+        contractEndDate: new Date('2026-01-20T00:00:00Z'),
+        status: 'active',
+        createdBy: creatorId,
+      },
+    ];
+
+    await Investment.create(mockInvestments);
+    console.log('[Investment Seeder] Seeded 3 standard investments.');
+  }
+};
+
+/**
  * Assign a new investment record to a client.
  * Investment records are financial records and are immutable once created.
  * POST /api/super-admin/investments
@@ -70,6 +148,8 @@ const createInvestment = asyncHandler(async (req, res, next) => {
  * Query Params: page, limit, clientName, clientCode, segment, status
  */
 const getAllInvestments = asyncHandler(async (req, res, next) => {
+  await seedMockInvestments(req.user.id);
+
   const page = parseInt(req.query.page, 10) || 1;
   const limit = parseInt(req.query.limit, 10) || 10;
   const skip = (page - 1) * limit;
@@ -141,8 +221,50 @@ const getInvestmentById = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * Extend an existing investment contract end date.
+ * PATCH /api/super-admin/investments/:id/extend
+ */
+const extendInvestmentContract = asyncHandler(async (req, res, next) => {
+  const { newEndDate } = req.body;
+
+  if (!newEndDate) {
+    return next(new AppError('New end date is required.', 400));
+  }
+
+  const investment = await Investment.findById(req.params.id);
+  if (!investment) {
+    return next(new AppError('Investment record not found.', 404));
+  }
+
+  const start = new Date(investment.investmentDate);
+  const end = new Date(newEndDate);
+
+  if (end <= start) {
+    return next(new AppError('New end date must be after the investment start date.', 400));
+  }
+
+  // Calculate new duration in months dynamically
+  const yearsDiff = end.getFullYear() - start.getFullYear();
+  const monthsDiff = end.getMonth() - start.getMonth();
+  const totalMonths = yearsDiff * 12 + monthsDiff;
+
+  investment.contractEndDate = end;
+  investment.durationMonths = totalMonths > 0 ? totalMonths : 1;
+  await investment.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Investment contract extended successfully.',
+    data: {
+      investment,
+    },
+  });
+});
+
 module.exports = {
   createInvestment,
   getAllInvestments,
   getInvestmentById,
+  extendInvestmentContract,
 };

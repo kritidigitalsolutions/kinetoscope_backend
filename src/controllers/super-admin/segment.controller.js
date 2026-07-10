@@ -13,31 +13,37 @@ const seedMockSegments = async (creatorId) => {
     {
       name: 'Film Making',
       statuses: ['Planning', 'In Production', 'Active', 'Ongoing', 'Completed'],
+      isDefault: true,
       createdBy: creatorId,
     },
     {
       name: 'Distribution',
       statuses: ['Planning', 'Active', 'Ongoing', 'Negotiation', 'Completed'],
+      isDefault: true,
       createdBy: creatorId,
     },
     {
       name: 'Music',
       statuses: ['Planning', 'Recording', 'Active', 'Ongoing', 'Completed', 'Released'],
+      isDefault: true,
       createdBy: creatorId,
     },
     {
       name: 'Trading & Syndication',
       statuses: ['Planning', 'Active', 'Ongoing', 'Completed'],
+      isDefault: true,
       createdBy: creatorId,
     },
     {
       name: 'Content IP Bank',
       statuses: ['Planning', 'Active', 'Ongoing', 'Completed'],
+      isDefault: true,
       createdBy: creatorId,
     },
     {
       name: 'Film Exhibition',
       statuses: ['Planning', 'Active', 'Ongoing', 'Completed'],
+      isDefault: true,
       createdBy: creatorId,
     },
   ];
