@@ -18,6 +18,7 @@ const {
   getClientProfile,
   updateClientProfile,
   getClientDocuments,
+  getClientPayouts,
 } = require('../../controllers/client/client-dashboard.controller');
 
 const {
@@ -80,6 +81,7 @@ router.get('/dashboard', getClientDashboard);
 // 3. Client Investment Management
 router.get('/investments', getClientInvestments);
 router.get('/investments/:id', getClientInvestmentById);
+router.get('/payouts', getClientPayouts);
 
 // 4. Client Profile Info
 router.get('/profile', getClientProfile);
@@ -115,7 +117,7 @@ const {
 
 router.route('/transactions')
   .get(getClientTransactions)
-  .post(requestTransaction);
+  .post(memoryUpload.single('file'), requestTransaction);
 
 // 12. Client direct messaging/notifications
 const { sendClientNotificationEmail } = require('../../controllers/client/notification.controller');

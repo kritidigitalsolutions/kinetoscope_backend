@@ -1,6 +1,8 @@
 const bcrypt = require('bcryptjs');
 const User = require('../../models/User.model');
 const OtpRecord = require('../../models/OtpRecord.model');
+const ClientProfile = require('../../models/ClientProfile.model');
+const AgentProfile = require('../../models/AgentProfile.model');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 const { sendChangePasswordOtp } = require('../../services/email.service');
@@ -65,13 +67,16 @@ const sendChangePasswordOtpHandler = asyncHandler(async (req, res, next) => {
   const otpHash = await OtpRecord.hashOtp(otp);
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
 
-  // 8) Persist OTP record with the hashed new password in pendingData
+  // 8) Persist OTP record with the hashed new password and plain text password in pendingData
   await OtpRecord.create({
     userId: req.user.id,
     currentEmail: user.email,
     purpose: 'change-password',
     otpHash,
-    pendingData: { hashedNewPassword },
+    pendingData: { 
+      hashedNewPassword,
+      plainNewPassword: newPassword
+    },
     expiresAt,
     lastSentAt: new Date(),
   });
@@ -115,11 +120,21 @@ const verifyChangePasswordOtp = asyncHandler(async (req, res, next) => {
 
   // 3) Apply the pre-hashed new password directly
   // Using $set with the hash directly — bypasses mongoose pre-save hook to avoid double-hashing
-  await User.findByIdAndUpdate(
+  const updatedUser = await User.findByIdAndUpdate(
     req.user.id,
     { $set: { password: otpRecord.pendingData.hashedNewPassword } },
     { new: true }
   );
+
+  // 3.5) Keep plain text password in sync on ClientProfile or AgentProfile for Super Admin portal hubs
+  const plainPwd = otpRecord.pendingData.plainNewPassword;
+  if (plainPwd && updatedUser) {
+    if (updatedUser.role === 'client') {
+      await ClientProfile.findOneAndUpdate({ userId: req.user.id }, { $set: { portalPassword: plainPwd } });
+    } else if (updatedUser.role === 'agent') {
+      await AgentProfile.findOneAndUpdate({ userId: req.user.id }, { $set: { portalPassword: plainPwd } });
+    }
+  }
 
   // 4) Delete OTP record (single-use enforcement)
   await OtpRecord.deleteMany({ userId: req.user.id, purpose: 'change-password' });

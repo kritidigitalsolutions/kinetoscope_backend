@@ -77,11 +77,17 @@ router.get('/articles/:id', getPublishedArticleById);
 const {
   requestAgentTransaction,
   getAgentTransactions,
+  requestAgentWithdrawal,
+  getAgentWithdrawals,
 } = require('../../controllers/agent/transaction.controller');
 
 router.route('/transactions')
   .get(getAgentTransactions)
   .post(requestAgentTransaction);
+
+router.route('/withdrawal')
+  .get(getAgentWithdrawals)
+  .post(requestAgentWithdrawal);
 
 // 10. Agent direct messaging/notifications
 const { sendAgentNotificationEmail } = require('../../controllers/agent/notification.controller');

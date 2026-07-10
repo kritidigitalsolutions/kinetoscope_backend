@@ -1,5 +1,6 @@
 const ClientProfile = require('../../models/ClientProfile.model');
 const Investment = require('../../models/Investment.model');
+const RoiPayout = require('../../models/RoiPayout.model');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 
@@ -221,6 +222,49 @@ const getClientDocuments = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * Get logged-in client payout history (ROI complete transaction details)
+ * GET /api/client/payouts
+ */
+const getClientPayouts = asyncHandler(async (req, res, next) => {
+  const clientId = req.user.id;
+
+  const payouts = await RoiPayout.find({ clientId }).sort({ processedDate: -1, createdAt: -1 });
+
+  // Calculate metrics
+  const totalRecords = payouts.length;
+  const paidPayouts = payouts.filter(p => p.status === 'PAID').length;
+  const pendingPayouts = payouts.filter(p => p.status === 'PENDING').length;
+  
+  const totalReceived = payouts
+    .filter(p => p.status === 'PAID')
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  // Formatted records
+  const formattedPayouts = payouts.map(p => ({
+    _id: p._id,
+    period: p.payoutMonth,
+    amount: p.amount,
+    paymentMode: p.paymentMode || '—',
+    transactionRefId: p.transactionRefId || '—',
+    status: p.status,
+    paidAt: p.processedDate ? p.processedDate.toISOString().split('T')[0] : '—',
+  }));
+
+  res.status(200).json({
+    success: true,
+    data: {
+      stats: {
+        totalRecords,
+        paidPayouts,
+        pendingPayouts,
+        totalReceived,
+      },
+      payouts: formattedPayouts,
+    },
+  });
+});
+
 module.exports = {
   calculateDashboardData,
   getClientDashboard,
@@ -229,4 +273,5 @@ module.exports = {
   getClientProfile,
   updateClientProfile,
   getClientDocuments,
+  getClientPayouts,
 };

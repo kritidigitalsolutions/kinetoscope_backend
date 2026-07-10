@@ -30,6 +30,15 @@ const roiPayoutSchema = new mongoose.Schema(
     processedDate: {
       type: Date,
     },
+    paymentMode: {
+      type: String,
+      enum: ['Bank Transfer', 'UPI', 'Cheque', 'Other', ''],
+      default: '',
+    },
+    transactionRefId: {
+      type: String,
+      default: '',
+    },
   },
   {
     timestamps: true,

@@ -10,6 +10,10 @@ const agentCommissionSchema = new mongoose.Schema(
       ref: 'User',
       required: [true, 'Agent ID is required'],
     },
+    clientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
     period: {
       type: String, // e.g. "Jan 2025", "Onboarding", "Special Campaign"
       required: [true, 'Period is required'],
@@ -42,6 +46,15 @@ const agentCommissionSchema = new mongoose.Schema(
     remarks: {
       type: String,
       trim: true,
+    },
+    paymentMode: {
+      type: String,
+      enum: ['Bank Transfer', 'UPI', 'Cheque', 'Other', ''],
+      default: '',
+    },
+    transactionRefId: {
+      type: String,
+      default: '',
     },
   },
   {

@@ -21,7 +21,14 @@ const validate = (req, res, next) => {
 const createInvestmentValidationRules = [
   body('clientId')
     .notEmpty().withMessage('Client ID is required')
-    .isMongoId().withMessage('Client ID must be a valid MongoDB ObjectId'),
+    .custom((value) => {
+      const isMongoId = /^[0-9a-fA-F]{24}$/.test(value);
+      const isClientCode = /^KFPL-\d+$/i.test(value);
+      if (!isMongoId && !isClientCode) {
+        throw new Error('Client ID must be a valid MongoDB ObjectId or Client Code (e.g. KFPL-1001)');
+      }
+      return true;
+    }),
 
 
 

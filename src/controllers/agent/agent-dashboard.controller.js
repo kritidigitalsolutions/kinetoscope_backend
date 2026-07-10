@@ -124,27 +124,117 @@ const getAgentClients = asyncHandler(async (req, res, next) => {
 const getAgentCommissions = asyncHandler(async (req, res, next) => {
   const agentId = req.user.id;
 
-  let commissions = await AgentCommission.find({ agentId }).sort({ createdAt: -1 });
+  // Let's populate the related client details
+  let commissions = await AgentCommission.find({ agentId })
+    .populate('clientId', 'name email clientCode')
+    .sort({ date: -1, createdAt: -1 });
 
   // Auto-seed mock data if empty
   if (commissions.length === 0) {
+    // 1. Fetch a client of this agent if exists, else fallback to null
+    const clientUser = await User.findOne({ assignedAgent: agentId, role: 'client' });
+    const fallbackClientId = clientUser ? clientUser._id : undefined;
+
     const mockData = [
-      { agentId, period: 'Jan 2025', date: new Date('2025-01-31'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Feb 2025', date: new Date('2025-02-28'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Mar 2025', date: new Date('2025-03-31'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Apr 2025', date: new Date('2025-04-30'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'May 2025', date: new Date('2025-05-31'), type: 'MONTHLY', amount: 33750, status: 'PENDING', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Jan 2024', date: new Date('2024-01-15'), type: 'ONE TIME', amount: 900000, status: 'PAID', remarks: 'One-time onboarding bonus' },
-      { agentId, period: 'Aug 2025', date: new Date('2025-08-10'), type: 'SPECIAL', amount: 16250, status: 'PAID', remarks: 'Independence Day special bonus' },
+      { agentId, clientId: fallbackClientId, period: 'Mar 2025', date: new Date('2025-03-31'), type: 'MONTHLY', amount: 33750, status: 'PENDING', remarks: 'Monthly commission payout' },
+      { agentId, clientId: fallbackClientId, period: 'Feb 2025', date: new Date('2025-02-28'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
+      { agentId, clientId: fallbackClientId, period: 'Jan 2025', date: new Date('2025-01-31'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
+      { agentId, clientId: fallbackClientId, period: 'Onboarding', date: new Date('2024-01-15'), type: 'ONE TIME', amount: 90000, status: 'PAID', remarks: 'One-time onboarding bonus' },
     ];
     commissions = await AgentCommission.create(mockData);
+
+    // Re-populate clientId after creation
+    commissions = await AgentCommission.find({ agentId })
+      .populate('clientId', 'name email clientCode')
+      .sort({ date: -1, createdAt: -1 });
   }
+
+  // Calculate stats
+  let totalCommissionEarned = 0;
+  let oneTimeAmount = 0;
+  let monthlyAmount = 0;
+  let specialAmount = 0;
+
+  const uniqueOneTimeClients = new Set();
+  let recurringPayoutCount = 0;
+  let specialBonusCount = 0;
+
+  commissions.forEach(c => {
+    if (c.status === 'PAID') {
+      totalCommissionEarned += c.amount;
+      if (c.type === 'ONE TIME') {
+        oneTimeAmount += c.amount;
+        if (c.clientId) uniqueOneTimeClients.add(c.clientId._id.toString());
+      } else if (c.type === 'MONTHLY') {
+        monthlyAmount += c.amount;
+        recurringPayoutCount++;
+      } else if (c.type === 'SPECIAL') {
+        specialAmount += c.amount;
+        specialBonusCount++;
+      }
+    }
+  });
+
+  // Fetch all active investments of related clients to map investmentAmount & slab %
+  const clientIds = commissions.map(c => c.clientId ? c.clientId._id : null).filter(Boolean);
+  const investments = await Investment.find({ clientId: { $in: clientIds }, status: 'active' }).lean();
+
+  const investmentMap = {};
+  investments.forEach(inv => {
+    investmentMap[inv.clientId.toString()] = inv.investmentAmount;
+  });
+
+  const getSlabPct = (amount) => {
+    if (!amount) return '2%';
+    if (amount <= 500000) return '2%';
+    if (amount <= 1500000) return '2.5%';
+    if (amount <= 3000000) return '3%';
+    if (amount <= 5000000) return '3.5%';
+    return '4%';
+  };
+
+  const enrichedCommissions = commissions.map(c => {
+    const client = c.clientId || {};
+    const invAmount = client._id ? (investmentMap[client._id.toString()] || 0) : 0;
+    const slabPct = invAmount ? getSlabPct(invAmount) : '—';
+
+    return {
+      _id: c._id,
+      period: c.period,
+      amount: c.amount,
+      status: c.status,
+      type: c.type,
+      date: c.date,
+      createdAt: c.createdAt,
+      paymentMode: c.paymentMode || '—',
+      transactionRefId: c.transactionRefId || '—',
+      remarks: c.remarks || '',
+      clientName: client.name || '—',
+      clientCode: client.clientCode || '—',
+      investmentAmount: invAmount || 0,
+      slabPercentage: slabPct,
+    };
+  });
 
   res.status(200).json({
     success: true,
-    count: commissions.length,
     data: {
-      commissions,
+      stats: {
+        totalCommissionEarned,
+        oneTime: {
+          amount: oneTimeAmount,
+          clientCount: uniqueOneTimeClients.size,
+        },
+        monthly: {
+          amount: monthlyAmount,
+          payoutCount: recurringPayoutCount,
+        },
+        special: {
+          amount: specialAmount,
+          bonusCount: specialBonusCount,
+        }
+      },
+      commissions: enrichedCommissions,
     },
   });
 });

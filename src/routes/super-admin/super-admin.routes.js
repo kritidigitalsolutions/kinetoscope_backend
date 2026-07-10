@@ -284,10 +284,16 @@ router.route('/investments/:id')
 
 router.patch('/investments/:id/extend', extendContractValidationRules, extendInvestmentContract);
 
-// 4. ROI Management
-router.route('/roi')
-  .get((req, res) => res.status(200).json({ status: 'success', message: 'List ROI records placeholder' }))
-  .post((req, res) => res.status(201).json({ status: 'success', message: 'Post ROI distributions placeholder' }));
+// 4. ROI & Payouts Management (Complete Transaction Details)
+const { recordPayout, getPayouts, markPayoutPaid, bulkUploadPayouts } = require('../../controllers/super-admin/payout.controller');
+
+router.route('/roi/payouts')
+  .get(getPayouts)
+  .post(recordPayout);
+
+router.post('/roi/payouts/bulk', memoryUpload.single('file'), bulkUploadPayouts);
+
+router.patch('/roi/payouts/:id/pay', markPayoutPaid);
 
 // 5. Agent Management
 router.route('/agents')
@@ -309,11 +315,16 @@ router.patch('/agents/:id/verify-document', verifyAgentDocument);
 const {
   getPendingApprovals,
   approveRejectTransaction,
+  getApprovalsHistory,
+  getTransactionById,
 } = require('../../controllers/super-admin/transaction.controller');
 
 router.route('/transactions/approvals')
   .get(getPendingApprovals);
 
+router.get('/transactions/history', getApprovalsHistory);
+router.get('/transactions/:id', getTransactionById);
+router.patch('/transactions/:id/action', approveRejectTransaction);
 router.patch('/transactions/:id/approve', approveRejectTransaction);
 
 // 7. Perks & Recognition Management

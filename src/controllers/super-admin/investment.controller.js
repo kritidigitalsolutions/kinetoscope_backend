@@ -1,5 +1,6 @@
 const Investment = require('../../models/Investment.model');
 const User = require('../../models/User.model');
+const ClientProfile = require('../../models/ClientProfile.model');
 const { sendInvestmentAssignmentNotification } = require('../../services/email.service');
 const { ROLES } = require('../../constants/roles');
 const AppError = require('../../utils/AppError');
@@ -95,14 +96,31 @@ const createInvestment = asyncHandler(async (req, res, next) => {
     return next(new AppError('Client ID is required.', 400));
   }
 
-  // Fetch client from database to ensure existence and grab correct name/code
-  const clientUser = await User.findById(clientId);
+  // Fetch client from database by ID or by clientCode (e.g. KFPL-1001)
+  let clientUser;
+  const isMongoId = /^[0-9a-fA-F]{24}$/.test(clientId);
+  if (isMongoId) {
+    clientUser = await User.findOne({ _id: clientId, role: ROLES.CLIENT });
+    if (!clientUser) {
+      // Fallback: Check if clientId is a ClientProfile _id
+      const profile = await ClientProfile.findById(clientId);
+      if (profile && profile.userId) {
+        clientUser = await User.findOne({ _id: profile.userId, role: ROLES.CLIENT });
+      }
+    }
+  } else {
+    clientUser = await User.findOne({ clientCode: clientId.toUpperCase(), role: ROLES.CLIENT });
+  }
+
   if (!clientUser || clientUser.role !== ROLES.CLIENT) {
     return next(new AppError('Client account not found.', 404));
   }
 
   const investmentData = {
     ...req.body,
+    investmentAmount: req.body.investmentAmount || req.body.amount,
+    roiPercentage: req.body.roiPercentage !== undefined ? req.body.roiPercentage : req.body.roi,
+    clientId: clientUser._id,
     clientName: clientUser.name,
     clientCode: clientUser.clientCode,
     createdBy: req.user.id,

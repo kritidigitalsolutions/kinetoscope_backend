@@ -87,9 +87,29 @@ const investmentSchema = new mongoose.Schema(
     },
   },
   {
-    timestamps: true, // Automatically manages createdAt and updatedAt fields
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
+
+// Virtual for amount
+investmentSchema.virtual('amount')
+  .get(function () {
+    return this.investmentAmount;
+  })
+  .set(function (val) {
+    this.investmentAmount = val;
+  });
+
+// Virtual for roi
+investmentSchema.virtual('roi')
+  .get(function () {
+    return this.roiPercentage;
+  })
+  .set(function (val) {
+    this.roiPercentage = val;
+  });
 
 // Pre-save hook to calculate contractEndDate based on investmentDate and durationMonths if not provided
 investmentSchema.pre('save', async function () {

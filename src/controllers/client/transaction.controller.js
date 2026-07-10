@@ -1,5 +1,6 @@
 const Transaction = require('../../models/Transaction.model');
 const User = require('../../models/User.model');
+const { uploadBufferToCloudinary } = require('../../services/cloudinary.service');
 const { sendTransactionRequestAlertToAdmin } = require('../../services/email.service');
 const { TRANSACTION_STATUS, TRANSACTION_TYPES } = require('../../constants/statuses');
 const { ROLES } = require('../../constants/roles');
@@ -22,20 +23,37 @@ const requestTransaction = asyncHandler(async (req, res, next) => {
     return next(new AppError('Transaction type must be either deposit or withdrawal.', 400));
   }
 
-  if (amount <= 0) {
-    return next(new AppError('Amount must be greater than zero.', 400));
+  const numericAmount = Number(amount);
+  if (isNaN(numericAmount) || numericAmount <= 0) {
+    return next(new AppError('Amount must be a positive number.', 400));
+  }
+
+  // File proof receipt handle (specifically required for deposits)
+  const file = req.file || (req.files && req.files[0]);
+  let proofAttachmentUrl = '';
+
+  if (file) {
+    try {
+      console.log('[Client Transaction] Uploading proof receipt to Cloudinary...');
+      proofAttachmentUrl = await uploadBufferToCloudinary(file.buffer, 'kinetoscope/transactions');
+    } catch (uploadError) {
+      return next(new AppError(`Proof document upload failed: ${uploadError.message}`, 500));
+    }
+  } else if (type === TRANSACTION_TYPES.DEPOSIT) {
+    return next(new AppError('Proof of Deposit (Receipt/Screenshot) file is required.', 400));
   }
 
   // Create transaction document
   const transaction = await Transaction.create({
-    clientId: req.user._id,
+    clientId: req.user.id || req.user._id,
     clientName: req.user.name,
     clientCode: req.user.clientCode,
     type,
-    amount,
+    amount: numericAmount,
     paymentMethod,
     referenceNumber,
     remarks,
+    proofAttachment: proofAttachmentUrl,
     status: TRANSACTION_STATUS.PENDING,
   });
 
@@ -51,7 +69,7 @@ const requestTransaction = asyncHandler(async (req, res, next) => {
         req.user.clientCode,
         {
           type,
-          amount,
+          amount: numericAmount,
           paymentMethod,
           referenceNumber,
         }
@@ -79,7 +97,8 @@ const getClientTransactions = asyncHandler(async (req, res, next) => {
   const limit = parseInt(req.query.limit, 10) || 10;
   const skip = (page - 1) * limit;
 
-  const query = { clientId: req.user._id };
+  const clientId = req.user.id || req.user._id;
+  const query = { clientId, isAgentWithdrawal: false };
 
   if (req.query.type) {
     query.type = req.query.type;
@@ -87,6 +106,24 @@ const getClientTransactions = asyncHandler(async (req, res, next) => {
   if (req.query.status) {
     query.status = req.query.status;
   }
+
+  // Calculate metrics (Approved Deposits sum, Approved Withdrawals sum, Pending requests count)
+  const allUserTx = await Transaction.find({ clientId, isAgentWithdrawal: false }).lean();
+  let totalDeposits = 0;
+  let totalWithdrawals = 0;
+  let pendingRequests = 0;
+
+  allUserTx.forEach(tx => {
+    if (tx.status === TRANSACTION_STATUS.PENDING) {
+      pendingRequests++;
+    } else if (tx.status === TRANSACTION_STATUS.APPROVED) {
+      if (tx.type === TRANSACTION_TYPES.DEPOSIT) {
+        totalDeposits += tx.amount;
+      } else if (tx.type === TRANSACTION_TYPES.WITHDRAWAL) {
+        totalWithdrawals += tx.amount;
+      }
+    }
+  });
 
   const total = await Transaction.countDocuments(query);
   const transactions = await Transaction.find(query)
@@ -104,6 +141,11 @@ const getClientTransactions = asyncHandler(async (req, res, next) => {
       totalPages: Math.ceil(total / limit),
     },
     data: {
+      stats: {
+        totalDeposits,
+        totalWithdrawals,
+        pendingRequests,
+      },
       transactions,
     },
   });

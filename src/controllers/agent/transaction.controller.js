@@ -1,5 +1,7 @@
 const Transaction = require('../../models/Transaction.model');
 const User = require('../../models/User.model');
+const AgentCommission = require('../../models/AgentCommission.model');
+const AgentProfile = require('../../models/AgentProfile.model');
 const { sendTransactionRequestAlertToAdmin } = require('../../services/email.service');
 const { TRANSACTION_STATUS, TRANSACTION_TYPES } = require('../../constants/statuses');
 const { ROLES } = require('../../constants/roles');
@@ -139,7 +141,99 @@ const getAgentTransactions = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * Request withdrawal of agent's own commission (Agent portal)
+ * POST /api/agent/withdrawal
+ */
+const requestAgentWithdrawal = asyncHandler(async (req, res, next) => {
+  const { amount, remarks } = req.body;
+  const agentId = req.user.id || req.user._id;
+
+  if (!amount) {
+    return next(new AppError('Withdrawal amount is required.', 400));
+  }
+
+  const numericAmount = Number(amount);
+  if (isNaN(numericAmount) || numericAmount <= 0) {
+    return next(new AppError('Amount must be a positive number.', 400));
+  }
+
+  // 1. Calculate Agent Available Balance
+  const commissions = await AgentCommission.find({ agentId, status: 'PAID' });
+  const totalEarned = commissions.reduce((sum, c) => sum + c.amount, 0);
+
+  const withdrawals = await Transaction.find({ agentId, isAgentWithdrawal: true, status: { $in: ['PENDING', 'APPROVED'] } });
+  const totalWithdrawn = withdrawals.reduce((sum, w) => sum + w.amount, 0);
+
+  const availableBalance = totalEarned - totalWithdrawn;
+
+  if (numericAmount > availableBalance) {
+    return next(new AppError(`Withdrawal request exceeds your available balance of ₹${availableBalance.toLocaleString('en-IN')}`, 400));
+  }
+
+  // 2. Fetch Agent bank details
+  const agentProfile = await AgentProfile.findOne({ userId: agentId });
+  const bankDetails = agentProfile ? `${agentProfile.bankName} — ****${(agentProfile.accountNumber || '').slice(-4)}` : 'Bank details not found';
+
+  // 3. Create the withdrawal transaction
+  const transaction = await Transaction.create({
+    agentId,
+    isAgentWithdrawal: true,
+    type: TRANSACTION_TYPES.WITHDRAWAL,
+    amount: numericAmount,
+    status: TRANSACTION_STATUS.PENDING,
+    paymentMethod: bankDetails,
+    remarks,
+  });
+
+  res.status(201).json({
+    success: true,
+    message: 'Withdrawal request submitted successfully.',
+    data: {
+      transaction,
+    },
+  });
+});
+
+/**
+ * Get agent's commission withdrawal history and current available balance (Agent portal)
+ * GET /api/agent/withdrawal
+ */
+const getAgentWithdrawals = asyncHandler(async (req, res, next) => {
+  const agentId = req.user.id || req.user._id;
+
+  // 1. Calculate Agent Available Balance
+  const commissions = await AgentCommission.find({ agentId, status: 'PAID' });
+  const totalEarned = commissions.reduce((sum, c) => sum + c.amount, 0);
+
+  const withdrawals = await Transaction.find({ agentId, isAgentWithdrawal: true, status: { $in: ['PENDING', 'APPROVED'] } });
+  const totalWithdrawn = withdrawals.reduce((sum, w) => sum + w.amount, 0);
+
+  const availableBalance = totalEarned - totalWithdrawn;
+
+  // 2. Get Bank Account
+  const agentProfile = await AgentProfile.findOne({ userId: agentId });
+  const bankAccount = agentProfile ? {
+    bankName: agentProfile.bankName,
+    accountNumber: agentProfile.accountNumber ? `****${agentProfile.accountNumber.slice(-4)}` : '—',
+  } : { bankName: '—', accountNumber: '—' };
+
+  // 3. Fetch History list
+  const history = await Transaction.find({ agentId, isAgentWithdrawal: true }).sort({ createdAt: -1 });
+
+  res.status(200).json({
+    success: true,
+    data: {
+      availableBalance,
+      bankAccount,
+      history,
+    },
+  });
+});
+
 module.exports = {
   requestAgentTransaction,
   getAgentTransactions,
+  requestAgentWithdrawal,
+  getAgentWithdrawals,
 };

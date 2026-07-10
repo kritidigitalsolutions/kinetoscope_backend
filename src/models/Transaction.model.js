@@ -10,22 +10,27 @@ const transactionSchema = new mongoose.Schema(
     clientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: [true, 'Client ID is required'],
     },
     clientName: {
       type: String,
-      required: [true, 'Client name is required'],
       trim: true,
     },
     clientCode: {
       type: String,
-      required: [true, 'Client code is required'],
       trim: true,
       uppercase: true,
     },
     agentId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User', // If submitted by an agent on behalf of the client
+      ref: 'User',
+    },
+    isAgentWithdrawal: {
+      type: Boolean,
+      default: false,
+    },
+    proofAttachment: {
+      type: String,
+      default: '',
     },
     type: {
       type: String,
