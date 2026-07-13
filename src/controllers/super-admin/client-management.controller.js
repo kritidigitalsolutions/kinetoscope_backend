@@ -76,6 +76,7 @@ const createClient = asyncHandler(async (req, res, next) => {
     email,
     dob,
     address,
+    emergencyContact,
     riskProfile,
     residencyStatus,
     monthlyRoi,
@@ -177,6 +178,7 @@ const createClient = asyncHandler(async (req, res, next) => {
       email,
       dob,
       address,
+      emergencyContact: emergencyContact || '',
       riskProfile,
       residencyStatus: residencyStatus || 'National (Domestic)',
       monthlyRoi: monthlyRoi !== undefined ? Number(monthlyRoi) : 1.2,
@@ -254,7 +256,7 @@ const createClient = asyncHandler(async (req, res, next) => {
  * GET /api/super-admin/clients
  */
 const getAllClients = asyncHandler(async (req, res, next) => {
-  const { search, status, page = 1, limit = 10 } = req.query;
+  const { search, status, page, limit } = req.query;
 
   // Build user query targeting role=client
   const userQuery = { role: ROLES.CLIENT };
@@ -269,24 +271,38 @@ const getAllClients = asyncHandler(async (req, res, next) => {
 
   // Filter based on profile status
   if (status) {
-    const profilesMatchingStatus = await ClientProfile.find({ status }, { userId: 1 });
+    const statusRegex = new RegExp(`^${status}$`, 'i');
+    const profilesMatchingStatus = await ClientProfile.find({ status: statusRegex }, { userId: 1 });
     const userIds = profilesMatchingStatus.map(p => p.userId);
     userQuery._id = { $in: userIds };
   }
 
-  const skip = (page - 1) * limit;
-
-  // Run user query and count in parallel, and use lean mode for faster query execution
-  const [users, total] = await Promise.all([
-    User.find(userQuery)
+  let users, total;
+  if (page === undefined && limit === undefined) {
+    // Dropdown / non-paginated fetch: get all matching clients
+    users = await User.find(userQuery)
       .populate('assignedAgent', 'name email')
       .populate('createdBy', 'name email')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number(limit))
-      .lean(),
-    User.countDocuments(userQuery)
-  ]);
+      .sort({ name: 1 })
+      .lean();
+    total = users.length;
+  } else {
+    // Paginated table fetch
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+    const skip = (pageNum - 1) * limitNum;
+    
+    [users, total] = await Promise.all([
+      User.find(userQuery)
+        .populate('assignedAgent', 'name email')
+        .populate('createdBy', 'name email')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      User.countDocuments(userQuery)
+    ]);
+  }
 
   const userIds = users.map(u => u._id);
   const profiles = await ClientProfile.find({ userId: { $in: userIds } }).lean();
@@ -296,19 +312,40 @@ const getAllClients = asyncHandler(async (req, res, next) => {
     profileMap[p.userId.toString()] = p;
   });
 
-  const clientRecords = users.map(user => ({
-    user,
-    profile: profileMap[user._id.toString()] || null
-  }));
+  // Fetch all active investments for these users to calculate totalInvestment
+  const activeInvestments = await Investment.find({
+    clientId: { $in: userIds },
+    status: 'active'
+  }).lean();
+
+  const investmentMap = {};
+  activeInvestments.forEach(inv => {
+    const cid = inv.clientId.toString();
+    investmentMap[cid] = (investmentMap[cid] || 0) + inv.investmentAmount;
+  });
+
+  const clientRecords = users.map(user => {
+    const profile = profileMap[user._id.toString()] || null;
+    const totalInv = investmentMap[user._id.toString()] || 0;
+    return {
+      _id: user._id,
+      clientId: user.clientCode || (profile && profile.clientCode) || '',
+      name: user.name || (profile && profile.fullName) || '',
+      status: (profile && profile.status) || 'active',
+      totalInvestment: totalInv,
+      user,
+      profile
+    };
+  });
 
   res.status(200).json({
     success: true,
     count: clientRecords.length,
     pagination: {
       total,
-      page: Number(page),
-      limit: Number(limit),
-      pages: Math.ceil(total / limit),
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : total,
+      pages: limit ? Math.ceil(total / limit) : 1,
     },
     data: {
       clients: clientRecords,
@@ -418,6 +455,7 @@ const updateClient = asyncHandler(async (req, res, next) => {
     'phone',
     'dob',
     'address',
+    'emergencyContact',
     'riskProfile',
     'residencyStatus',
     'monthlyRoi',

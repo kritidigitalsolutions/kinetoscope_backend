@@ -285,11 +285,14 @@ router.route('/investments/:id')
 router.patch('/investments/:id/extend', extendContractValidationRules, extendInvestmentContract);
 
 // 4. ROI & Payouts Management (Complete Transaction Details)
-const { recordPayout, getPayouts, markPayoutPaid, bulkUploadPayouts } = require('../../controllers/super-admin/payout.controller');
+const { recordPayout, getPayouts, markPayoutPaid, bulkUploadPayouts, clearAllPayouts, deletePayout } = require('../../controllers/super-admin/payout.controller');
 
 router.route('/roi/payouts')
   .get(getPayouts)
   .post(recordPayout);
+
+router.delete('/roi/payouts/clear', clearAllPayouts);
+router.delete('/roi/payouts/:id', deletePayout);
 
 router.post('/roi/payouts/bulk', memoryUpload.single('file'), bulkUploadPayouts);
 

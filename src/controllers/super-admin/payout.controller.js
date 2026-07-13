@@ -1,105 +1,171 @@
 const User = require('../../models/User.model');
-const RoiPayout = require('../../models/RoiPayout.model');
-const AgentCommission = require('../../models/AgentCommission.model');
 const ClientProfile = require('../../models/ClientProfile.model');
+const Payout = require('../../models/Payout.model');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 
 /**
- * Seed mock client return & agent commission payout logs to match screen designs
+ * Seed initial active clients, agents, investments, and payouts if database is empty.
+ * Matches requirements from Admin portal test recording.
  */
 const seedMockPayouts = async (creatorId) => {
-  return; // Disabled seeder
-  const roiCount = await RoiPayout.countDocuments();
-  const commCount = await AgentCommission.countDocuments();
+  return;
+  const clientCount = await User.countDocuments({ role: 'client' });
+  if (clientCount === 0) {
+    console.log('[Payout Seeder] Seeding initial active clients, agents, investments, and payouts...');
+    
+    // Create Agent
+    let agent = await User.create({
+      name: 'Vikram Patel',
+      email: 'vikram.agent@example.com',
+      role: 'agent',
+      clientCode: 'AGT-001',
+      password: 'password123',
+      isActive: true
+    });
+    
+    const AgentProfile = require('../../models/AgentProfile.model');
+    await AgentProfile.create({
+      userId: agent._id,
+      fullName: 'Vikram Patel',
+      phone: '+91 98765 00001',
+      email: 'vikram.agent@example.com',
+      bankName: 'HDFC Bank',
+      accountNumber: '50100012345678',
+      ifscCode: 'HDFC0000240',
+      residencyStatus: 'National (Domestic)',
+      panNumber: 'ABCDE1234F',
+      aadhaarNumber: '123456789012',
+      nomineeName: 'Anita Patel',
+      nomineeRelation: 'Spouse',
+      nomineePhone: '+91 98765 00002',
+      status: 'active'
+    });
 
-  if (roiCount === 0 && commCount === 0) {
-    // 1. Find or create clients
-    let c1 = await User.findOne({ name: 'Rajesh Kumar', role: 'client' });
-    let c2 = await User.findOne({ name: 'Priya Sharma', role: 'client' });
-    let c3 = await User.findOne({ name: 'Anita Desai', role: 'client' });
+    // Create Clients
+    let c1 = await User.create({
+      name: 'Rajesh Kumar',
+      email: 'rajesh.kumar@example.com',
+      role: 'client',
+      clientCode: 'KFPL-1001',
+      password: 'password123',
+      isActive: true,
+      assignedAgent: agent._id
+    });
+    
+    await ClientProfile.create({
+      userId: c1._id,
+      fullName: 'Rajesh Kumar',
+      phone: '+91 99999 88888',
+      email: 'rajesh.kumar@example.com',
+      dob: new Date('1990-01-01'),
+      address: '123 Film City, Mumbai',
+      riskProfile: 'Moderate',
+      residencyStatus: 'National (Domestic)',
+      monthlyRoi: 1.2,
+      panNumber: 'ABCDE1234F',
+      aadhaarNumber: '123456789012',
+      bankName: 'ICICI Bank',
+      accountNumber: '000401500123',
+      ifscCode: 'ICIC0000004',
+      nomineeName: 'Suman Kumar',
+      nomineeRelation: 'Spouse',
+      nomineePhone: '+91 99999 77777',
+      nomineeEmail: 'suman@example.com',
+      status: 'active',
+      kycStatus: 'VERIFIED',
+      tier: 'SILVER'
+    });
 
-    // 2. Find or create agents
-    let a1 = await User.findOne({ name: 'Vikram Patel', role: 'agent' });
-    let a2 = await User.findOne({ name: 'Neha Gupta', role: 'agent' });
-    let a3 = await User.findOne({ name: 'Arjun Singh', role: 'agent' });
+    let c2 = await User.create({
+      name: 'Priya Sharma',
+      email: 'priya.sharma@example.com',
+      role: 'client',
+      clientCode: 'KFPL-1002',
+      password: 'password123',
+      isActive: true,
+      assignedAgent: agent._id
+    });
 
-    // Fallbacks if not found
-    if (!c1) c1 = await User.create({ name: 'Rajesh Kumar', email: 'rajesh@example.com', role: 'client', clientCode: 'KFPL-1001', password: 'password123', isActive: true });
-    if (!c2) c2 = await User.create({ name: 'Priya Sharma', email: 'priya@example.com', role: 'client', clientCode: 'KFPL-1002', password: 'password123', isActive: true });
-    if (!c3) c3 = await User.create({ name: 'Anita Desai', email: 'anita@example.com', role: 'client', clientCode: 'KFPL-1003', password: 'password123', isActive: true });
+    await ClientProfile.create({
+      userId: c2._id,
+      fullName: 'Priya Sharma',
+      phone: '+91 99999 11111',
+      email: 'priya.sharma@example.com',
+      dob: new Date('1992-05-15'),
+      address: '456 Bandra, Mumbai',
+      riskProfile: 'Conservative',
+      residencyStatus: 'National (Domestic)',
+      monthlyRoi: 1.0,
+      panNumber: 'FGHIJ5678K',
+      aadhaarNumber: '987654321098',
+      bankName: 'SBI Bank',
+      accountNumber: '30001234567',
+      ifscCode: 'SBIN0000300',
+      nomineeName: 'Ramesh Sharma',
+      nomineeRelation: 'Father',
+      nomineePhone: '+91 99999 22222',
+      nomineeEmail: 'ramesh@example.com',
+      status: 'active',
+      kycStatus: 'VERIFIED',
+      tier: 'SILVER'
+    });
 
-    if (!a1) a1 = await User.create({ name: 'Vikram Patel', email: 'vikram.agent@example.com', role: 'agent', clientCode: 'AGT-001', password: 'password123', isActive: true });
-    if (!a2) a2 = await User.create({ name: 'Neha Gupta', email: 'neha.agent@example.com', role: 'agent', clientCode: 'AGT-002', password: 'password123', isActive: true });
-    if (!a3) a3 = await User.create({ name: 'Arjun Singh', email: 'arjun.agent@example.com', role: 'agent', clientCode: 'AGT-003', password: 'password123', isActive: true });
-
-    // 3. Create ROI payouts (Client returns)
-    await RoiPayout.create([
+    // Create Investments
+    const Investment = require('../../models/Investment.model');
+    await Investment.create([
       {
         clientId: c1._id,
-        payoutMonth: 'Jan 2025',
-        amount: 30000,
-        status: 'PAID',
-        processedDate: new Date('2025-01-31'),
-        paymentMode: 'Bank Transfer',
-        transactionRefId: 'TXN-ROI-101'
+        clientName: 'Rajesh Kumar',
+        clientCode: 'KFPL-1001',
+        segment: 'Film Making',
+        investmentAmount: 5000000,
+        roiPercentage: 12,
+        riskPercentage: 30,
+        riskLevel: 'Medium',
+        durationMonths: 24,
+        investmentDate: new Date('2026-01-01'),
+        status: 'active',
+        createdBy: creatorId
       },
       {
         clientId: c2._id,
-        payoutMonth: 'Jan 2025',
-        amount: 24000,
-        status: 'PENDING',
-        paymentMode: '',
-        transactionRefId: ''
-      },
-      {
-        clientId: c3._id,
-        payoutMonth: 'Jan 2025',
-        amount: 18000,
-        status: 'PENDING',
-        paymentMode: '',
-        transactionRefId: ''
+        clientName: 'Priya Sharma',
+        clientCode: 'KFPL-1002',
+        segment: 'Distribution',
+        investmentAmount: 3000000,
+        roiPercentage: 10,
+        riskPercentage: 15,
+        riskLevel: 'Low',
+        durationMonths: 24,
+        investmentDate: new Date('2026-02-01'),
+        status: 'active',
+        createdBy: creatorId
       }
     ]);
 
-    // 4. Create Agent commissions
-    await AgentCommission.create([
+    // Create Payouts
+    await Payout.create([
       {
-        agentId: a3._id,
-        period: 'Feb 2025',
-        date: new Date('2025-02-28'),
-        type: 'MONTHLY',
-        amount: 33750,
-        status: 'PAID',
-        paymentMode: 'Bank Transfer',
-        transactionRefId: 'TXN-COMM-302',
-        remarks: 'Monthly commission'
+        recipientType: 'Client Return (ROI)',
+        recipientId: 'KFPL-1001',
+        amount: 50000,
+        payoutDate: '2026-07-13',
+        status: 'pending'
       },
       {
-        agentId: a2._id,
-        period: 'Jan 2025',
-        date: new Date('2025-01-31'),
-        type: 'MONTHLY',
-        amount: 33750,
-        status: 'PAID',
+        recipientType: 'Agent Commission',
+        recipientId: 'AGT-001',
+        commissionType: 'Monthly',
+        clientId: 'KFPL-1001',
+        amount: 15000,
+        payoutDate: '2026-07-13',
+        status: 'paid',
         paymentMode: 'Bank Transfer',
-        transactionRefId: 'TXN-COMM-301',
-        remarks: 'Monthly commission'
-      },
-      {
-        agentId: a1._id,
-        period: 'Feb 2025',
-        date: new Date('2025-02-28'),
-        type: 'MONTHLY',
-        amount: 33750,
-        status: 'PAID',
-        paymentMode: 'Bank Transfer',
-        transactionRefId: 'TXN-COMM-303',
-        remarks: 'Monthly commission'
+        transactionRefId: 'TXN-COMM-777',
+        paidAt: new Date()
       }
     ]);
-
-    console.log('[Payout Seeder] Seeded mock client return & agent commission payout logs.');
   }
 };
 
@@ -108,10 +174,10 @@ const seedMockPayouts = async (creatorId) => {
  * POST /api/super-admin/roi/payouts
  */
 const recordPayout = asyncHandler(async (req, res, next) => {
-  const { recipientType, recipientId, amount, payoutDate, paymentMode, transactionRefId, commissionType, clientId, period } = req.body;
+  const { recipientType, recipientId, amount, payoutDate, paymentMode, transactionRefId, commissionType, clientId, status } = req.body;
 
-  if (!recipientType || !recipientId || !amount || !paymentMode || !transactionRefId) {
-    return next(new AppError('Please provide recipientType, recipientId, amount, paymentMode, and transactionRefId.', 400));
+  if (!recipientType || !recipientId || !amount || !payoutDate) {
+    return next(new AppError('Please provide recipientType, recipientId, amount, and payoutDate.', 400));
   }
 
   const numericAmount = Number(amount);
@@ -119,78 +185,45 @@ const recordPayout = asyncHandler(async (req, res, next) => {
     return next(new AppError('Amount must be a positive number.', 400));
   }
 
-  // Parse recipient type: 'Client Return (ROI)' / 'client' vs 'Agent Commission' / 'agent'
-  const isClient = recipientType.toLowerCase().includes('client') || recipientType.toLowerCase().includes('roi');
-
-  const user = await User.findById(recipientId);
-  if (!user) {
-    return next(new AppError('Recipient user account not found.', 404));
+  // Normalize recipientType to database format
+  let normalizedRecipientType = recipientType;
+  const lowerType = recipientType.toLowerCase();
+  if (lowerType === 'client' || lowerType.includes('roi')) {
+    normalizedRecipientType = 'Client Return (ROI)';
+  } else if (lowerType === 'agent' || lowerType.includes('commission')) {
+    normalizedRecipientType = 'Agent Commission';
   }
 
-  const dateObj = payoutDate ? new Date(payoutDate) : new Date();
-  // Formatted Month-Year (e.g. "Jul 2026")
-  const formatter = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' });
-  const monthStr = formatter.format(dateObj); // "Jul 2026"
-
-  let record;
-
-  if (isClient) {
-    if (user.role !== 'client') {
-      return next(new AppError('User is not a client.', 400));
+  // Check unique constraints for transactionRefId if provided
+  if (transactionRefId) {
+    const existing = await Payout.findOne({ transactionRefId });
+    if (existing) {
+      return next(new AppError(`Payout with transaction reference ID ${transactionRefId} already exists.`, 400));
     }
-
-    record = await RoiPayout.create({
-      clientId: user._id,
-      payoutMonth: period || monthStr,
-      amount: numericAmount,
-      status: 'PAID',
-      processedDate: dateObj,
-      paymentMode,
-      transactionRefId,
-    });
-  } else {
-    if (user.role !== 'agent') {
-      return next(new AppError('User is not an agent.', 400));
-    }
-
-    // Map Commission Type:
-    // 'Monthly Recurring' -> 'MONTHLY'
-    // 'One-Time Onboarding' -> 'ONE TIME'
-    // 'Special Override' -> 'SPECIAL'
-    let dbCommType = 'MONTHLY';
-    if (commissionType) {
-      const typeLower = commissionType.toLowerCase();
-      if (typeLower.includes('one') || typeLower.includes('onboard')) {
-        dbCommType = 'ONE TIME';
-      } else if (typeLower.includes('special') || typeLower.includes('override')) {
-        dbCommType = 'SPECIAL';
-      }
-    }
-
-    // Determine Period: if ONE TIME and no period passed, default to 'Onboarding'
-    let finalPeriod = period || monthStr;
-    if (dbCommType === 'ONE TIME' && !period) {
-      finalPeriod = 'Onboarding';
-    }
-
-    record = await AgentCommission.create({
-      agentId: user._id,
-      clientId: clientId || undefined,
-      period: finalPeriod,
-      date: dateObj,
-      type: dbCommType,
-      amount: numericAmount,
-      status: 'PAID',
-      paymentMode,
-      transactionRefId,
-      remarks: 'Commission paid manually',
-    });
   }
+
+  let payoutStatus = status || 'pending';
+  if (paymentMode && transactionRefId) {
+    payoutStatus = 'paid';
+  }
+
+  const payout = await Payout.create({
+    recipientType: normalizedRecipientType,
+    recipientId,
+    commissionType: commissionType || '',
+    clientId: clientId || '',
+    amount: numericAmount,
+    payoutDate,
+    paymentMode: paymentMode || '',
+    transactionRefId: transactionRefId || '',
+    status: payoutStatus,
+    paidAt: payoutStatus === 'paid' ? new Date() : undefined
+  });
 
   res.status(201).json({
     success: true,
     message: 'Payout recorded successfully.',
-    data: record,
+    data: payout,
   });
 });
 
@@ -199,98 +232,72 @@ const recordPayout = asyncHandler(async (req, res, next) => {
  * GET /api/super-admin/roi/payouts
  */
 const getPayouts = asyncHandler(async (req, res, next) => {
-  await seedMockPayouts(req.user.id);
-
   const { status, recipientType, search } = req.query;
 
-  // Fetch client profiles to map their ROI rate
-  const profiles = await ClientProfile.find({}, { userId: 1, monthlyRoi: 1 }).lean();
-  const profileMap = {};
-  profiles.forEach(p => {
-    profileMap[p.userId.toString()] = p.monthlyRoi;
-  });
-
-  // 1. Fetch ROI payouts
-  const roiQuery = {};
+  const query = {};
   if (status && status !== 'All') {
-    roiQuery.status = status.toUpperCase();
+    query.status = status.toLowerCase(); // 'pending' or 'paid'
   }
-  const roiPayouts = await RoiPayout.find(roiQuery)
-    .populate('clientId', 'name email clientCode')
-    .lean();
-
-  // 2. Fetch Agent commissions
-  const commQuery = {};
-  if (status && status !== 'All') {
-    commQuery.status = status.toUpperCase();
-  }
-  const agentCommissions = await AgentCommission.find(commQuery)
-    .populate('agentId', 'name email clientCode')
-    .populate('clientId', 'name email clientCode')
-    .lean();
-
-  // 3. Format & unify lists
-  const unified = [];
-
-  // Add ROIs
-  roiPayouts.forEach(p => {
-    const client = p.clientId || {};
-    const roiRate = profileMap[client._id ? client._id.toString() : ''] || 12;
-    unified.push({
-      _id: p._id,
-      recipientId: client._id || null,
-      recipientName: client.name || 'Unknown Client',
-      recipientCode: client.clientCode || '—',
-      recipientType: 'CLIENT',
-      type: `ROI (${roiRate}%)`,
-      period: p.payoutMonth,
-      amount: p.amount,
-      paymentMode: p.paymentMode || '—',
-      transactionRefId: p.transactionRefId || '—',
-      status: p.status,
-      paidAt: p.processedDate ? p.processedDate.toISOString().split('T')[0] : '—',
-      rawDate: p.processedDate || p.createdAt,
-    });
-  });
-
-  // Add Commissions
-  agentCommissions.forEach(c => {
-    const agent = c.agentId || {};
-    const client = c.clientId || {};
-    const mappedType = c.type === 'MONTHLY' ? 'Comm (monthly)' :
-                       c.type === 'ONE TIME' ? 'Comm (one-time)' : 'Comm (override)';
-    unified.push({
-      _id: c._id,
-      recipientId: agent._id || null,
-      recipientName: agent.name || 'Unknown Agent',
-      recipientCode: agent.clientCode || '—',
-      recipientType: 'AGENT',
-      type: mappedType,
-      period: c.period,
-      amount: c.amount,
-      paymentMode: c.paymentMode || '—',
-      transactionRefId: c.transactionRefId || '—',
-      status: c.status,
-      paidAt: c.status === 'PAID' ? (c.date || c.createdAt).toISOString().split('T')[0] : '—',
-      rawDate: c.date || c.createdAt,
-      relatedClientName: client.name || '—',
-      relatedClientCode: client.clientCode || '—',
-    });
-  });
-
-  // Sort unified list by rawDate descending
-  unified.sort((a, b) => b.rawDate - a.rawDate);
-
-  // Apply filters
-  let filtered = unified;
-
   if (recipientType && recipientType !== 'All') {
-    filtered = filtered.filter(item => item.recipientType.toLowerCase() === recipientType.toLowerCase());
+    query.recipientType = recipientType;
   }
 
   if (search) {
+    const searchRegex = { $regex: search, $options: 'i' };
+    query.$or = [
+      { recipientId: searchRegex },
+      { transactionRefId: searchRegex },
+      { payoutDate: searchRegex },
+    ];
+  }
+
+  const payouts = await Payout.find(query).sort({ payoutDate: -1, createdAt: -1 }).lean();
+
+  // Populate recipient names
+  const recipientIds = payouts.map(p => p.recipientId);
+  const users = await User.find({ clientCode: { $in: recipientIds } }, { name: 1, clientCode: 1 }).lean();
+  
+  const userMap = {};
+  users.forEach(u => {
+    userMap[u.clientCode] = u.name;
+  });
+
+  let formatted = payouts.map(p => {
+    const name = userMap[p.recipientId] || 'Unknown';
+    let periodFormatted = '—';
+    try {
+      if (p.payoutDate) {
+        const parts = p.payoutDate.split('-');
+        if (parts.length >= 2) {
+          const dObj = new Date(parts[0], parseInt(parts[1], 10) - 1, 1);
+          periodFormatted = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(dObj);
+        }
+      }
+    } catch (e) {
+      console.error('[getPayouts] Error formatting period:', e.message);
+    }
+
+    return {
+      _id: p._id,
+      recipientId: p.recipientId,
+      recipientName: name,
+      recipientCode: p.recipientId,
+      recipientType: p.recipientType === 'Client Return (ROI)' ? 'CLIENT' : 'AGENT',
+      type: p.recipientType === 'Client Return (ROI)' ? 'ROI' : `Comm (${p.commissionType || 'monthly'})`,
+      period: periodFormatted,
+      amount: p.amount,
+      payoutDate: p.payoutDate,
+      paymentMode: p.paymentMode || '—',
+      transactionRefId: p.transactionRefId || '—',
+      status: p.status.toUpperCase(), // return upper case for frontend table compatibility
+      paidAt: p.paidAt ? p.paidAt.toISOString().split('T')[0] : '—',
+      rawDate: p.payoutDate || p.createdAt,
+    };
+  });
+
+  if (search) {
     const searchLower = search.toLowerCase();
-    filtered = filtered.filter(item => 
+    formatted = formatted.filter(item => 
       item.recipientName.toLowerCase().includes(searchLower) ||
       item.recipientCode.toLowerCase().includes(searchLower) ||
       item.transactionRefId.toLowerCase().includes(searchLower) ||
@@ -300,8 +307,8 @@ const getPayouts = asyncHandler(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    count: filtered.length,
-    data: filtered,
+    count: formatted.length,
+    data: formatted,
   });
 });
 
@@ -317,45 +324,32 @@ const markPayoutPaid = asyncHandler(async (req, res, next) => {
     return next(new AppError('Payment mode and transaction reference ID are required.', 400));
   }
 
-  // 1. Try to find in RoiPayout
-  let payout = await RoiPayout.findById(id);
-  if (payout) {
-    if (payout.status === 'PAID') {
-      return next(new AppError('This payout is already marked as PAID.', 400));
-    }
-    payout.status = 'PAID';
-    payout.processedDate = new Date();
-    payout.paymentMode = paymentMode;
-    payout.transactionRefId = transactionRefId;
-    await payout.save();
-
-    return res.status(200).json({
-      success: true,
-      message: 'Client ROI payout marked as PAID successfully.',
-      data: payout,
-    });
+  const payout = await Payout.findById(id);
+  if (!payout) {
+    return next(new AppError('Payout record not found.', 404));
   }
 
-  // 2. Try to find in AgentCommission
-  let commission = await AgentCommission.findById(id);
-  if (commission) {
-    if (commission.status === 'PAID') {
-      return next(new AppError('This commission is already marked as PAID.', 400));
-    }
-    commission.status = 'PAID';
-    commission.date = new Date();
-    commission.paymentMode = paymentMode;
-    commission.transactionRefId = transactionRefId;
-    await commission.save();
-
-    return res.status(200).json({
-      success: true,
-      message: 'Agent Commission payout marked as PAID successfully.',
-      data: commission,
-    });
+  if (payout.status === 'paid') {
+    return next(new AppError('This payout is already marked as paid.', 400));
   }
 
-  return next(new AppError('Payout record not found in either ROI payouts or Agent Commissions.', 404));
+  // Check unique constraints for transactionRefId
+  const existing = await Payout.findOne({ transactionRefId, _id: { $ne: id } });
+  if (existing) {
+    return next(new AppError(`Payout with transaction reference ID ${transactionRefId} already exists.`, 400));
+  }
+
+  payout.status = 'paid';
+  payout.paymentMode = paymentMode;
+  payout.transactionRefId = transactionRefId;
+  payout.paidAt = new Date();
+  await payout.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Payout marked as paid successfully.',
+    data: payout,
+  });
 });
 
 /**
@@ -374,10 +368,7 @@ const bulkUploadPayouts = asyncHandler(async (req, res, next) => {
     return next(new AppError('CSV file is empty or contains no records.', 400));
   }
 
-  // Parse headers
   const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
-  
-  // Find column indices
   const getIndex = (names) => headers.findIndex(h => names.some(name => h.toLowerCase() === name.toLowerCase()));
 
   const recipientTypeIdx = getIndex(['recipientType', 'type', 'payoutType']);
@@ -388,7 +379,6 @@ const bulkUploadPayouts = asyncHandler(async (req, res, next) => {
   const transactionRefIdIdx = getIndex(['transactionRefId', 'refId', 'referenceId', 'ref']);
   const commissionTypeIdx = getIndex(['commissionType', 'commType']);
   const relatedClientCodeIdx = getIndex(['relatedClientCode', 'clientCode']);
-  const periodIdx = getIndex(['period', 'month', 'payoutMonth']);
 
   if (recipientTypeIdx === -1 || recipientCodeIdx === -1 || amountIdx === -1) {
     return next(new AppError('CSV must contain recipientType, recipientCode (or code), and amount columns.', 400));
@@ -410,14 +400,14 @@ const bulkUploadPayouts = asyncHandler(async (req, res, next) => {
       continue;
     }
 
-    const payoutDate = payoutDateIdx !== -1 && row[payoutDateIdx] ? new Date(row[payoutDateIdx]) : new Date();
+    const rawPayoutDate = payoutDateIdx !== -1 && row[payoutDateIdx] ? new Date(row[payoutDateIdx]) : new Date();
+    const payoutDateFormatted = rawPayoutDate.toISOString().split('T')[0];
     const paymentMode = paymentModeIdx !== -1 ? row[paymentModeIdx] : 'Bank Transfer';
     const transactionRefId = transactionRefIdIdx !== -1 ? row[transactionRefIdIdx] : 'TXN-' + Math.random().toString(36).substring(2, 10).toUpperCase();
     const commissionType = commissionTypeIdx !== -1 ? row[commissionTypeIdx] : '';
     const relatedClientCode = relatedClientCodeIdx !== -1 ? row[relatedClientCodeIdx] : '';
-    const period = periodIdx !== -1 ? row[periodIdx] : '';
 
-    // Find the recipient user
+    // Verify recipient user exists
     const user = await User.findOne({ clientCode: recipientCode.toUpperCase() });
     if (!user) {
       errors.push(`Row ${i + 1}: Recipient code ${recipientCode} not found in database.`);
@@ -425,65 +415,37 @@ const bulkUploadPayouts = asyncHandler(async (req, res, next) => {
     }
 
     const isClient = recipientType.toLowerCase().includes('client') || recipientType.toLowerCase().includes('roi');
+    const dbRecipientType = isClient ? 'Client Return (ROI)' : 'Agent Commission';
 
-    const formatter = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' });
-    const monthStr = formatter.format(payoutDate);
-
-    if (isClient) {
-      if (user.role !== 'client') {
-        errors.push(`Row ${i + 1}: User with code ${recipientCode} is not a client.`);
-        continue;
-      }
-
-      const pRecord = await RoiPayout.create({
-        clientId: user._id,
-        payoutMonth: period || monthStr,
-        amount: amountVal,
-        status: 'PAID',
-        processedDate: payoutDate,
-        paymentMode,
-        transactionRefId,
-      });
-      results.push(pRecord);
-    } else {
-      if (user.role !== 'agent') {
-        errors.push(`Row ${i + 1}: User with code ${recipientCode} is not an agent.`);
-        continue;
-      }
-
-      let dbCommType = 'MONTHLY';
+    let dbCommType = '';
+    if (!isClient) {
+      dbCommType = 'Monthly';
       if (commissionType) {
         const typeLower = commissionType.toLowerCase();
         if (typeLower.includes('one') || typeLower.includes('onboard')) {
-          dbCommType = 'ONE TIME';
+          dbCommType = 'One-Time';
         } else if (typeLower.includes('special') || typeLower.includes('override')) {
-          dbCommType = 'SPECIAL';
+          dbCommType = 'Special';
         }
       }
+    }
 
-      let finalPeriod = period || monthStr;
-      if (dbCommType === 'ONE TIME' && !period) {
-        finalPeriod = 'Onboarding';
-      }
-
-      let relatedClientUser = null;
-      if (relatedClientCode) {
-        relatedClientUser = await User.findOne({ clientCode: relatedClientCode.toUpperCase(), role: 'client' });
-      }
-
-      const cRecord = await AgentCommission.create({
-        agentId: user._id,
-        clientId: relatedClientUser ? relatedClientUser._id : undefined,
-        period: finalPeriod,
-        date: payoutDate,
-        type: dbCommType,
+    try {
+      const pRecord = await Payout.create({
+        recipientType: dbRecipientType,
+        recipientId: recipientCode.toUpperCase(),
+        commissionType: dbCommType,
+        clientId: isClient ? '' : (relatedClientCode ? relatedClientCode.toUpperCase() : ''),
         amount: amountVal,
-        status: 'PAID',
+        payoutDate: payoutDateFormatted,
         paymentMode,
         transactionRefId,
-        remarks: 'Bulk uploaded payout',
+        status: 'paid',
+        paidAt: rawPayoutDate
       });
-      results.push(cRecord);
+      results.push(pRecord);
+    } catch (err) {
+      errors.push(`Row ${i + 1}: Failed to save - ${err.message}`);
     }
   }
 
@@ -496,9 +458,44 @@ const bulkUploadPayouts = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * Clear all Payout records (Super Admin only)
+ * DELETE /api/super-admin/roi/payouts
+ */
+const clearAllPayouts = asyncHandler(async (req, res, next) => {
+  const result = await Payout.deleteMany({});
+
+  res.status(200).json({
+    success: true,
+    message: `All payout records (${result.deletedCount}) have been cleared successfully.`,
+    count: result.deletedCount
+  });
+});
+
+/**
+ * Delete a single Payout record (Super Admin only)
+ * DELETE /api/super-admin/roi/payouts/:id
+ */
+const deletePayout = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const payout = await Payout.findByIdAndDelete(id);
+
+  if (!payout) {
+    return next(new AppError('Payout record not found.', 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    message: 'Payout record deleted successfully.',
+    data: payout
+  });
+});
+
 module.exports = {
   recordPayout,
   getPayouts,
   markPayoutPaid,
   bulkUploadPayouts,
+  clearAllPayouts,
+  deletePayout,
 };

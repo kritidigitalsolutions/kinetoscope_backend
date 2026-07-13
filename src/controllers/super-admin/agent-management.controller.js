@@ -209,7 +209,7 @@ const createAgent = asyncHandler(async (req, res, next) => {
  * GET /api/super-admin/agents
  */
 const getAllAgents = asyncHandler(async (req, res, next) => {
-  const { search, status, page = 1, limit = 10 } = req.query;
+  const { search, status, page, limit } = req.query;
 
   // Build user query targeting role=agent
   const userQuery = { role: ROLES.AGENT };
@@ -224,23 +224,36 @@ const getAllAgents = asyncHandler(async (req, res, next) => {
 
   // Filter based on profile status
   if (status) {
-    const profilesMatchingStatus = await AgentProfile.find({ status }, { userId: 1 });
+    const statusRegex = new RegExp(`^${status}$`, 'i');
+    const profilesMatchingStatus = await AgentProfile.find({ status: statusRegex }, { userId: 1 });
     const userIds = profilesMatchingStatus.map(p => p.userId);
     userQuery._id = { $in: userIds };
   }
 
-  const skip = (page - 1) * limit;
-
-  // Run user query and count in parallel, and use lean mode for faster query execution
-  const [users, total] = await Promise.all([
-    User.find(userQuery)
+  let users, total;
+  if (page === undefined && limit === undefined) {
+    // Dropdown / non-paginated fetch: get all matching agents
+    users = await User.find(userQuery)
       .populate('createdBy', 'name email')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number(limit))
-      .lean(),
-    User.countDocuments(userQuery)
-  ]);
+      .sort({ name: 1 })
+      .lean();
+    total = users.length;
+  } else {
+    // Paginated table fetch
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+    const skip = (pageNum - 1) * limitNum;
+    
+    [users, total] = await Promise.all([
+      User.find(userQuery)
+        .populate('createdBy', 'name email')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      User.countDocuments(userQuery)
+    ]);
+  }
 
   const agentIds = users.map(u => u._id);
 
@@ -275,7 +288,7 @@ const getAllAgents = asyncHandler(async (req, res, next) => {
     }
   });
 
-  // 3) Fetch active investments in bulk
+  // Fetch active investments in bulk
   let investmentMap = {}; // Maps clientId -> sum of active investment amounts
   if (allClientIds.length > 0) {
     const investments = await Investment.find(
@@ -288,7 +301,7 @@ const getAllAgents = asyncHandler(async (req, res, next) => {
     });
   }
 
-  // 4) Assemble final records
+  // Assemble final records
   const agentRecords = users.map(user => {
     const userIdStr = user._id.toString();
     const profile = profileMap[userIdStr] || null;
@@ -302,7 +315,9 @@ const getAllAgents = asyncHandler(async (req, res, next) => {
 
     return {
       _id: user._id,
-      name: user.name,
+      agentId: user.clientCode || (profile && profile.clientCode) || '',
+      name: user.name || (profile && profile.fullName) || '',
+      status: (profile && profile.status) || 'active',
       email: user.email,
       clientCode: user.clientCode,
       isActive: user.isActive,
@@ -319,9 +334,9 @@ const getAllAgents = asyncHandler(async (req, res, next) => {
     count: agentRecords.length,
     pagination: {
       total,
-      page: Number(page),
-      limit: Number(limit),
-      pages: Math.ceil(total / limit),
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : total,
+      pages: limit ? Math.ceil(total / limit) : 1,
     },
     data: {
       agents: agentRecords,

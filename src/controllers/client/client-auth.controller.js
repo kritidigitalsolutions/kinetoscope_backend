@@ -206,11 +206,20 @@ const getMe = asyncHandler(async (req, res, next) => {
 
   const profile = await ClientProfile.findOne({ userId: req.user.id });
 
+  let profileObj = null;
+  if (profile) {
+    profileObj = {
+      ...profile.toObject(),
+      clientCode: req.user.clientCode || '—',
+      clientId: req.user.clientCode || '—',
+    };
+  }
+
   res.status(200).json({
     success: true,
     data: {
       user: req.user,
-      profile,
+      profile: profileObj,
     },
   });
 });

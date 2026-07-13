@@ -42,6 +42,11 @@ const clientProfileSchema = new mongoose.Schema(
       required: [true, 'Address is required'],
       trim: true,
     },
+    emergencyContact: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     riskProfile: {
       type: String,
       required: [true, 'Risk profile is required'],

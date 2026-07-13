@@ -1,6 +1,8 @@
 const ClientProfile = require('../../models/ClientProfile.model');
 const Investment = require('../../models/Investment.model');
 const RoiPayout = require('../../models/RoiPayout.model');
+const User = require('../../models/User.model');
+const Payout = require('../../models/Payout.model');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 
@@ -150,10 +152,62 @@ const getClientProfile = asyncHandler(async (req, res, next) => {
     return next(new AppError('Client profile not found.', 404));
   }
 
+  const clientUser = await User.findById(req.user.id).populate('assignedAgent', 'name clientCode');
+  let agentInfo = 'Direct Client (No Agent)';
+  if (clientUser && clientUser.assignedAgent) {
+    agentInfo = `${clientUser.assignedAgent.name} (${clientUser.assignedAgent.clientCode || '—'})`;
+  }
+
+  const formatLongDate = (dateVal) => {
+    if (!dateVal) return '—';
+    const date = new Date(dateVal);
+    if (isNaN(date.getTime())) return '—';
+    const day = date.getDate();
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const month = months[date.getMonth()];
+    const year = date.getFullYear();
+    return `${day} ${month} ${year}`;
+  };
+
+  const profileObj = {
+    ...profile.toObject(),
+    clientCode: req.user.clientCode || '—',
+    clientId: req.user.clientCode || '—',
+  };
+
   res.status(200).json({
     success: true,
     data: {
-      profile,
+      profile: profileObj,
+      personalInformation: {
+        fullName: profile.fullName || req.user.name || '—',
+        email: profile.email || req.user.email || '—',
+        phone: profile.phone || '—',
+        dob: profile.dob ? profile.dob.toISOString().split('T')[0] : '—',
+        dobFormatted: formatLongDate(profile.dob),
+        address: profile.address || '—',
+        emergencyContact: profile.emergencyContact || 'Not provided',
+      },
+      accountDetails: {
+        clientId: req.user.clientCode || '—',
+        category: profile.tier ? (profile.tier.charAt(0).toUpperCase() + profile.tier.slice(1).toLowerCase()) : 'Silver',
+        status: (profile.status || 'active').toUpperCase(),
+        memberSince: req.user.createdAt || profile.createdAt || '—',
+        memberSinceFormatted: formatLongDate(req.user.createdAt || profile.createdAt),
+        agent: agentInfo,
+      },
+      nomineeDetails: {
+        nomineeName: profile.nomineeName || '—',
+        relation: profile.nomineeRelation || '—',
+        contact: profile.nomineePhone || '—',
+        email: profile.nomineeEmail || 'Not provided',
+      },
+      riskProfile: {
+        riskProfile: profile.riskProfile ? (profile.riskProfile.charAt(0).toUpperCase() + profile.riskProfile.slice(1).toLowerCase()) : 'Moderate',
+      }
     },
   });
 });
@@ -167,6 +221,7 @@ const updateClientProfile = asyncHandler(async (req, res, next) => {
   const allowedUpdates = [
     'phone',
     'address',
+    'emergencyContact',
     'nomineeName',
     'nomineeRelation',
     'nomineePhone',
@@ -191,11 +246,17 @@ const updateClientProfile = asyncHandler(async (req, res, next) => {
     return next(new AppError('Client profile could not be found.', 404));
   }
 
+  const profileObj = {
+    ...profile.toObject(),
+    clientCode: req.user.clientCode || '—',
+    clientId: req.user.clientCode || '—',
+  };
+
   res.status(200).json({
     success: true,
     message: 'Profile updated successfully',
     data: {
-      profile,
+      profile: profileObj,
     },
   });
 });
@@ -222,46 +283,65 @@ const getClientDocuments = asyncHandler(async (req, res, next) => {
   });
 });
 
-/**
- * Get logged-in client payout history (ROI complete transaction details)
- * GET /api/client/payouts
- */
 const getClientPayouts = asyncHandler(async (req, res, next) => {
-  const clientId = req.user.id;
+  const clientCode = req.user.clientCode;
 
-  const payouts = await RoiPayout.find({ clientId }).sort({ processedDate: -1, createdAt: -1 });
+  if (!clientCode) {
+    return next(new AppError('Client code not found on user record.', 400));
+  }
+
+  const payouts = await Payout.find({
+    recipientId: clientCode,
+    recipientType: 'Client Return (ROI)'
+  }).sort({ payoutDate: -1, createdAt: -1 });
 
   // Calculate metrics
   const totalRecords = payouts.length;
-  const paidPayouts = payouts.filter(p => p.status === 'PAID').length;
-  const pendingPayouts = payouts.filter(p => p.status === 'PENDING').length;
+  const paidPayouts = payouts.filter(p => p.status === 'paid').length;
+  const pending = payouts.filter(p => p.status === 'pending').length;
   
   const totalReceived = payouts
-    .filter(p => p.status === 'PAID')
+    .filter(p => p.status === 'paid')
     .reduce((sum, p) => sum + p.amount, 0);
 
   // Formatted records
-  const formattedPayouts = payouts.map(p => ({
-    _id: p._id,
-    period: p.payoutMonth,
-    amount: p.amount,
-    paymentMode: p.paymentMode || '—',
-    transactionRefId: p.transactionRefId || '—',
-    status: p.status,
-    paidAt: p.processedDate ? p.processedDate.toISOString().split('T')[0] : '—',
-  }));
+  const formattedPayouts = payouts.map(p => {
+    let periodFormatted = '—';
+    try {
+      if (p.payoutDate) {
+        const parts = p.payoutDate.split('-');
+        if (parts.length >= 2) {
+          const dObj = new Date(parts[0], parseInt(parts[1], 10) - 1, 1);
+          periodFormatted = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(dObj);
+        }
+      }
+    } catch (e) {
+      console.error('[getClientPayouts] Error formatting period:', e.message);
+    }
+
+    return {
+      _id: p._id,
+      recipientType: p.recipientType,
+      recipientId: p.recipientId,
+      amount: p.amount,
+      payoutDate: p.payoutDate,
+      paymentMode: p.paymentMode || '—',
+      transactionRefId: p.transactionRefId || '—',
+      status: p.status === 'paid' ? 'PAID' : 'PENDING',
+      paidAt: p.paidAt ? p.paidAt.toISOString().split('T')[0] : '—',
+      period: periodFormatted
+    };
+  });
 
   res.status(200).json({
     success: true,
-    data: {
-      stats: {
-        totalRecords,
-        paidPayouts,
-        pendingPayouts,
-        totalReceived,
-      },
-      payouts: formattedPayouts,
+    metrics: {
+      totalRecords,
+      paidPayouts,
+      pending,
+      totalReceived,
     },
+    payouts: formattedPayouts,
   });
 });
 

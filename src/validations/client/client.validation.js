@@ -36,6 +36,9 @@ const createClientValidationRules = [
   body('address')
     .trim()
     .notEmpty().withMessage('Address is required'),
+  body('emergencyContact')
+    .optional({ checkFalsy: true })
+    .trim(),
   body('riskProfile')
     .trim()
     .notEmpty().withMessage('Risk profile is required')
@@ -161,6 +164,9 @@ const updateClientProfileRules = [
     .optional()
     .trim()
     .notEmpty().withMessage('Address cannot be empty'),
+  body('emergencyContact')
+    .optional()
+    .trim(),
   body('nomineeName')
     .optional()
     .trim()
@@ -208,6 +214,9 @@ const updateClientRulesByAdmin = [
     .optional()
     .trim()
     .notEmpty().withMessage('Address cannot be empty'),
+  body('emergencyContact')
+    .optional()
+    .trim(),
   body('riskProfile')
     .optional()
     .isIn(['conservative', 'moderate', 'aggressive', 'Conservative', 'Moderate', 'Aggressive']).withMessage('Risk profile must be Conservative, Moderate, or Aggressive'),
