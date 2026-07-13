@@ -18,6 +18,21 @@ const validate = (req, res, next) => {
  * Validation rules for Send OTP (change password initiation)
  */
 const sendChangePasswordOtpRules = [
+  (req, res, next) => {
+    if (req.body) {
+      if (req.body.oldPassword) req.body.currentPassword = req.body.oldPassword;
+      if (req.body.old_password) req.body.currentPassword = req.body.old_password;
+      if (req.body.current_password) req.body.currentPassword = req.body.current_password;
+
+      if (req.body.new_password) req.body.newPassword = req.body.new_password;
+      if (req.body.password && !req.body.newPassword) req.body.newPassword = req.body.password;
+
+      if (req.body.confirmNewPassword) req.body.confirmPassword = req.body.confirmNewPassword;
+      if (req.body.confirm_password) req.body.confirmPassword = req.body.confirm_password;
+      if (req.body.confirm_new_password) req.body.confirmPassword = req.body.confirm_new_password;
+    }
+    next();
+  },
   body('currentPassword')
     .notEmpty().withMessage('Current password is required'),
 
