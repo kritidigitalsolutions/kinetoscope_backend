@@ -1,12 +1,14 @@
 const express = require('express');
 const { protect, restrictTo } = require('../../middlewares/auth.middleware');
 const { ROLES } = require('../../constants/roles');
+const { memoryUpload } = require('../../middlewares/upload.middleware');
 
 const {
   login,
   verify2FA,
   logout,
   getMe,
+  registerAgent,
 } = require('../../controllers/agent/agent-auth.controller');
 
 const {
@@ -29,6 +31,19 @@ const {
 const router = express.Router();
 
 // --- PUBLIC AGENT PORTAL AUTHENTICATION FLOW ---
+const agentRegisterUpload = memoryUpload.fields([
+  { name: 'panDocument', maxCount: 1 },
+  { name: 'panCard', maxCount: 1 },
+  { name: 'idProofDocument', maxCount: 1 },
+  { name: 'idProof', maxCount: 1 },
+  { name: 'bankProofDocument', maxCount: 1 },
+  { name: 'bankStatementProof', maxCount: 1 },
+  { name: 'bankProof', maxCount: 1 },
+  { name: 'nomineeProofDocument', maxCount: 1 },
+  { name: 'nomineeProof', maxCount: 1 },
+]);
+
+router.post('/auth/register', agentRegisterUpload, registerAgent);
 router.post('/auth/login', login);
 router.post('/auth/verify-2fa', verify2FA);
 router.post('/auth/logout', logout);
@@ -99,10 +114,13 @@ router.get('/rewards', getAgentPerformanceRewards);
 // 12. Service Requests (Agent view)
 const { createRequestRules } = require('../../validations/super-admin/service-request.validation');
 const { createServiceRequest, getMyServiceRequests } = require('../../controllers/super-admin/service-request.controller');
-const { memoryUpload } = require('../../middlewares/upload.middleware');
 
 router.route('/service-requests')
   .get(getMyServiceRequests)
   .post(memoryUpload.single('attachment'), createRequestRules, createServiceRequest);
+
+// 13. FAQ Management
+const { getAgentFaqs } = require('../../controllers/agent/agent-faq.controller');
+router.get('/faqs', getAgentFaqs);
 
 module.exports = router;

@@ -236,7 +236,8 @@ const registerClient = asyncHandler(async (req, res, next) => {
     dob,
     address,
     riskProfile,
-    citizenship,
+    residencyStatus,
+    citizenship, // fallback mapping
     monthlyRoi,
     panNumber,
     aadhaarNumber,
@@ -245,8 +246,10 @@ const registerClient = asyncHandler(async (req, res, next) => {
     ifscCode,
     nomineeName,
     nomineeRelation,
+    relation, // fallback mapping
     nomineePhone,
     nomineeEmail,
+    nomineeResidency,
     password,
   } = req.body;
 
@@ -270,10 +273,11 @@ const registerClient = asyncHandler(async (req, res, next) => {
   });
   const clientCode = `KFPL-${maxSeq + 1}`;
 
-  // 3) Process file uploads (panDocument, aadhaarDocument, bankProofDocument)
-  const panFile = req.files && req.files['panDocument'] ? req.files['panDocument'][0] : null;
-  const aadhaarFile = req.files && req.files['aadhaarDocument'] ? req.files['aadhaarDocument'][0] : null;
-  const bankFile = req.files && req.files['bankProofDocument'] ? req.files['bankProofDocument'][0] : null;
+  // 3) Process file uploads flexibly
+  const panFile = req.files && (req.files['panDocument']?.[0] || req.files['panCard']?.[0] || req.files['pan']?.[0]);
+  const aadhaarFile = req.files && (req.files['aadhaarDocument']?.[0] || req.files['aadhaarCard']?.[0] || req.files['aadhaar']?.[0]);
+  const bankFile = req.files && (req.files['bankProofDocument']?.[0] || req.files['bankStatementProof']?.[0] || req.files['bankProof']?.[0]);
+  const nomineeFile = req.files && (req.files['nomineeProofDocument']?.[0] || req.files['nomineeProof']?.[0]);
 
   if (!panFile || !aadhaarFile || !bankFile) {
     return next(new AppError('Please upload all required KYC documents (PAN, Aadhaar, Bank Proof).', 400));
@@ -282,6 +286,7 @@ const registerClient = asyncHandler(async (req, res, next) => {
   let panDocumentUrl = '';
   let aadhaarDocumentUrl = '';
   let bankProofDocumentUrl = '';
+  let nomineeProofDocumentUrl = '';
 
   const { uploadBufferToCloudinary } = require('../../services/cloudinary.service');
 
@@ -290,6 +295,9 @@ const registerClient = asyncHandler(async (req, res, next) => {
     panDocumentUrl = await uploadBufferToCloudinary(panFile.buffer, 'kinetoscope/clients/kyc');
     aadhaarDocumentUrl = await uploadBufferToCloudinary(aadhaarFile.buffer, 'kinetoscope/clients/kyc');
     bankProofDocumentUrl = await uploadBufferToCloudinary(bankFile.buffer, 'kinetoscope/clients/kyc');
+    if (nomineeFile) {
+      nomineeProofDocumentUrl = await uploadBufferToCloudinary(nomineeFile.buffer, 'kinetoscope/clients/kyc');
+    }
   } catch (err) {
     return next(new AppError(`KYC document upload failed: ${err.message}`, 500));
   }
@@ -316,7 +324,7 @@ const registerClient = asyncHandler(async (req, res, next) => {
       dob: dob ? new Date(dob) : undefined,
       address,
       riskProfile: riskProfile || 'Conservative',
-      residencyStatus: citizenship || 'National (Domestic)',
+      residencyStatus: residencyStatus || citizenship || 'National (Domestic)',
       monthlyRoi: monthlyRoi !== undefined ? Number(monthlyRoi) : 1.2,
       panNumber,
       aadhaarNumber,
@@ -324,12 +332,14 @@ const registerClient = asyncHandler(async (req, res, next) => {
       accountNumber,
       ifscCode,
       nomineeName,
-      nomineeRelation,
+      nomineeRelation: nomineeRelation || relation || '',
       nomineePhone,
       nomineeEmail,
+      nomineeResidency: nomineeResidency || 'National (Domestic)',
       panDocument: panDocumentUrl,
       aadhaarDocument: aadhaarDocumentUrl,
       bankProofDocument: bankProofDocumentUrl,
+      nomineeProofDocument: nomineeProofDocumentUrl,
       kycStatus: 'PENDING',
       status: 'inactive', // inactive until approved
       portalPassword: password || 'tempPassword123',

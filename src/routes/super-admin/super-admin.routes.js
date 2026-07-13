@@ -6,6 +6,8 @@ const {
   getAllInvestments,
   getInvestmentById,
   extendInvestmentContract,
+  deleteInvestment,
+  clearAllInvestments,
 } = require('../../controllers/super-admin/investment.controller');
 const {
   createInvestmentValidationRules,
@@ -41,6 +43,7 @@ const {
   getClientById,
   updateClient,
   deleteClient,
+  clearAllClients,
   previewClientDashboard,
   updateClientRoiRate,
   verifyDocument,
@@ -258,6 +261,8 @@ router.route('/clients')
 router.get('/clients/manage', getManageClients);
 router.get('/clients/manage/export', exportClientsCSV);
 
+router.delete('/clients/clear', clearAllClients);
+
 router.route('/clients/:id')
   .get(getClientById)
   .patch(clientOnboardingUpload, updateClientRulesByAdmin, updateClient)
@@ -279,8 +284,11 @@ router.route('/investments')
   .get(getAllInvestments)
   .post(createInvestmentValidationRules, createInvestment);
 
+router.delete('/investments/clear', clearAllInvestments);
+
 router.route('/investments/:id')
-  .get(getInvestmentById);
+  .get(getInvestmentById)
+  .delete(deleteInvestment);
 
 router.patch('/investments/:id/extend', extendContractValidationRules, extendInvestmentContract);
 
@@ -549,5 +557,16 @@ router.route('/service-requests/:id/status')
 router.route('/service-requests/:id')
   .get(getServiceRequestById)
   .delete(deleteServiceRequest);
+
+// 22. FAQ Management
+const { createFaq, getAllFaqs, updateFaq, deleteFaq } = require('../../controllers/super-admin/faq.controller');
+
+router.route('/faqs')
+  .get(getAllFaqs)
+  .post(createFaq);
+
+router.route('/faqs/:id')
+  .patch(updateFaq)
+  .delete(deleteFaq);
 
 module.exports = router;

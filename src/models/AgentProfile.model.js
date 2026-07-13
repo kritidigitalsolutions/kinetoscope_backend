@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { encrypt, decrypt } = require('../utils/crypto');
 
 /**
  * Agent Profile Schema containing agent-specific details, documents, bank details, commissions, and nominee info.
@@ -47,12 +48,15 @@ const agentProfileSchema = new mongoose.Schema(
       required: [true, 'PAN / Tax ID number is required'],
       trim: true,
       uppercase: true,
+      set: encrypt,
+      get: decrypt,
       validate: {
         validator: function(v) {
+          const decryptedVal = decrypt(v);
           if (this.residencyStatus === 'International') {
-            return v && v.trim().length > 0;
+            return decryptedVal && decryptedVal.trim().length > 0;
           }
-          return /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(v);
+          return /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(decryptedVal);
         },
         message: 'Please provide a valid PAN number',
       },
@@ -61,12 +65,15 @@ const agentProfileSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Aadhaar / Passport number is required'],
       trim: true,
+      set: encrypt,
+      get: decrypt,
       validate: {
         validator: function(v) {
+          const decryptedVal = decrypt(v);
           if (this.residencyStatus === 'International') {
-            return v && v.trim().length > 0;
+            return decryptedVal && decryptedVal.trim().length > 0;
           }
-          return /^\d{12}$/.test(v);
+          return /^\d{12}$/.test(decryptedVal);
         },
         message: 'Please provide a valid 12-digit Aadhaar number',
       },
@@ -81,6 +88,8 @@ const agentProfileSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Account number is required'],
       trim: true,
+      set: encrypt,
+      get: decrypt,
     },
     ifscCode: {
       type: String,
@@ -208,10 +217,14 @@ const agentProfileSchema = new mongoose.Schema(
     portalPassword: {
       type: String,
       default: '',
+      set: encrypt,
+      get: decrypt,
     },
   },
   {
     timestamps: true, // Automatically manages createdAt and updatedAt fields
+    toJSON: { getters: true },
+    toObject: { getters: true },
   }
 );
 

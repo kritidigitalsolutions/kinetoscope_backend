@@ -80,6 +80,10 @@ app.get('/', (req, res) => {
   });
 });
 
+// Response Masking Middleware (Applies role-based masking rules)
+const maskingMiddleware = require('./middlewares/masking.middleware');
+app.use(maskingMiddleware);
+
 // API Routes
 app.use('/api', rootRouter);
 

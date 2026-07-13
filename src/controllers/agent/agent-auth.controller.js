@@ -209,9 +209,166 @@ const getMe = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * Register a new Agent (Self-registration from agent portal)
+ * POST /api/agent/auth/register
+ */
+const registerAgent = asyncHandler(async (req, res, next) => {
+  // 1) Normalize files mapping to accommodate various frontend naming conventions
+  if (!req.files) {
+    return next(new AppError('No documents were uploaded. Please upload all 4 required documents.', 400));
+  }
+
+  const filesMap = {
+    panDocument: req.files.panDocument?.[0] || req.files.panCard?.[0] || req.files.pan?.[0],
+    idProofDocument: req.files.idProofDocument?.[0] || req.files.idProof?.[0],
+    bankProofDocument: req.files.bankProofDocument?.[0] || req.files.bankStatementProof?.[0] || req.files.bankProof?.[0],
+    nomineeProofDocument: req.files.nomineeProofDocument?.[0] || req.files.nomineeProof?.[0]
+  };
+
+  const fileFields = [
+    'panDocument',
+    'idProofDocument',
+    'bankProofDocument',
+    'nomineeProofDocument',
+  ];
+
+  for (const field of fileFields) {
+    if (!filesMap[field]) {
+      return next(new AppError(`Required document missing: ${field}`, 400));
+    }
+  }
+
+  // Override req.files with normalized keys for background Cloudinary uploader
+  req.files = {
+    panDocument: [filesMap.panDocument],
+    idProofDocument: [filesMap.idProofDocument],
+    bankProofDocument: [filesMap.bankProofDocument],
+    nomineeProofDocument: [filesMap.nomineeProofDocument]
+  };
+
+  const {
+    fullName,
+    phone,
+    email,
+    residencyStatus,
+    citizenship, // fallback mapping
+    panNumber,
+    aadhaarNumber,
+    bankName,
+    accountNumber,
+    ifscCode,
+    nomineeName,
+    nomineeRelation,
+    relation, // fallback mapping
+    nomineePhone,
+    nomineeEmail,
+    nomineeResidency,
+    password,
+  } = req.body;
+
+  if (!fullName || !email || !phone || !password) {
+    return next(new AppError('Please provide fullName, email, phone, and password.', 400));
+  }
+
+  // 2) Check if email is already registered in the system
+  const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
+  if (existingUser) {
+    return next(new AppError('Email address is already in use by another account.', 400));
+  }
+
+  // 3) Generate a sequential agent code starting from AGT-001
+  const agents = await User.find({ role: ROLES.AGENT }, { clientCode: 1 });
+  let maxSeq = 0;
+  agents.forEach(a => {
+    if (a.clientCode && a.clientCode.startsWith('AGT-')) {
+      const parts = a.clientCode.split('-');
+      const seq = parseInt(parts[1], 10);
+      if (!isNaN(seq) && seq > maxSeq) {
+        maxSeq = seq;
+      }
+    }
+  });
+  const agentCode = `AGT-${String(maxSeq + 1).padStart(3, '0')}`;
+
+  // Define database variables outside to perform rollback on error
+  let createdUser, createdProfile;
+
+  try {
+    // 4) Create the User document
+    createdUser = await User.create({
+      name: fullName,
+      email: email.toLowerCase().trim(),
+      password,
+      role: ROLES.AGENT,
+      isActive: false, // Inactive by default until admin verification
+      is2FAEnabled: false,
+      clientCode: agentCode,
+    });
+
+    // 5) Create the AgentProfile document
+    createdProfile = await AgentProfile.create({
+      userId: createdUser._id,
+      fullName,
+      phone,
+      email: email.toLowerCase().trim(),
+      residencyStatus: residencyStatus || citizenship || 'National (Domestic)',
+      panNumber,
+      aadhaarNumber,
+      bankName,
+      accountNumber,
+      ifscCode,
+      oneTimeCommission: 0,
+      monthlySlab: '',
+      specialCommission: 0,
+      nomineeName,
+      nomineeRelation: nomineeRelation || relation || '',
+      nomineePhone,
+      nomineeEmail,
+      nomineeResidency: nomineeResidency || 'National (Domestic)',
+      panDocument: '',
+      idProofDocument: '',
+      bankProofDocument: '',
+      nomineeProofDocument: '',
+      documentStatus: 'pending_upload',
+      status: 'pending', // Pending status by default
+      portalPassword: password,
+    });
+  } catch (dbError) {
+    // Rollback: Delete user if created user profile creation fails
+    if (createdUser) {
+      await User.findByIdAndDelete(createdUser._id);
+    }
+    return next(new AppError(`Database transaction failed: ${dbError.message}`, 500));
+  }
+
+  // 6) Trigger parallel in-memory background uploads (Vercel-safe using waitUntil)
+  const { uploadDocumentsToCloudinaryParallelBackground } = require('../../services/cloudinary.service');
+  uploadDocumentsToCloudinaryParallelBackground({
+    files: req.files,
+    fileFields,
+    Model: AgentProfile,
+    filter: { userId: createdUser._id },
+    entityLabel: 'Agent',
+  });
+
+  // Clear password from return payload
+  createdUser.password = undefined;
+
+  res.status(201).json({
+    success: true,
+    message: 'Agent registration successful. Documents are uploading in the background. Access is pending admin verification.',
+    data: {
+      user: createdUser,
+      profile: createdProfile,
+    },
+  });
+});
+
 module.exports = {
   login,
   verify2FA,
   logout,
   getMe,
+  registerAgent,
 };

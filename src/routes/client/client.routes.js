@@ -59,8 +59,14 @@ const router = express.Router();
 // --- PUBLIC CLIENT PORTAL AUTHENTICATION FLOW ---
 const clientRegisterUpload = memoryUpload.fields([
   { name: 'panDocument', maxCount: 1 },
+  { name: 'panCard', maxCount: 1 },
   { name: 'aadhaarDocument', maxCount: 1 },
+  { name: 'aadhaarCard', maxCount: 1 },
   { name: 'bankProofDocument', maxCount: 1 },
+  { name: 'bankStatementProof', maxCount: 1 },
+  { name: 'bankProof', maxCount: 1 },
+  { name: 'nomineeProofDocument', maxCount: 1 },
+  { name: 'nomineeProof', maxCount: 1 },
 ]);
 
 router.post('/auth/register', clientRegisterUpload, registerClient);
@@ -130,5 +136,9 @@ const { createServiceRequest, getMyServiceRequests } = require('../../controller
 router.route('/service-requests')
   .get(getMyServiceRequests)
   .post(memoryUpload.single('attachment'), createRequestRules, createServiceRequest);
+
+// 14. FAQ Management
+const { getClientFaqs } = require('../../controllers/client/client-faq.controller');
+router.get('/faqs', getClientFaqs);
 
 module.exports = router;

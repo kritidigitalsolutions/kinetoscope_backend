@@ -281,9 +281,44 @@ const extendInvestmentContract = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * Delete a single investment record (Super Admin only)
+ * DELETE /api/super-admin/investments/:id
+ */
+const deleteInvestment = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const investment = await Investment.findByIdAndDelete(id);
+
+  if (!investment) {
+    return next(new AppError('Investment record not found.', 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    message: 'Investment record deleted successfully.',
+    data: investment
+  });
+});
+
+/**
+ * Clear all investment records (Super Admin only)
+ * DELETE /api/super-admin/investments/clear
+ */
+const clearAllInvestments = asyncHandler(async (req, res, next) => {
+  const result = await Investment.deleteMany({});
+
+  res.status(200).json({
+    success: true,
+    message: `All investment records (${result.deletedCount}) have been cleared successfully.`,
+    count: result.deletedCount
+  });
+});
+
 module.exports = {
   createInvestment,
   getAllInvestments,
   getInvestmentById,
   extendInvestmentContract,
+  deleteInvestment,
+  clearAllInvestments,
 };

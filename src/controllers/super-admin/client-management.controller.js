@@ -739,12 +739,50 @@ const verifyDocument = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * Clear all Clients (Super Admin only)
+ * DELETE /api/super-admin/clients/clear
+ */
+const clearAllClients = asyncHandler(async (req, res, next) => {
+  // Find all client users
+  const clients = await User.find({ role: ROLES.CLIENT });
+  const clientIds = clients.map(c => c._id);
+
+  // Fetch client profiles
+  const profiles = await ClientProfile.find({ userId: { $in: clientIds } });
+  
+  // Purge documents from Cloudinary
+  const documentUrls = [];
+  profiles.forEach(profile => {
+    if (profile.panDocument) documentUrls.push(profile.panDocument);
+    if (profile.aadhaarDocument) documentUrls.push(profile.aadhaarDocument);
+    if (profile.bankProofDocument) documentUrls.push(profile.bankProofDocument);
+    if (profile.agreementDocument) documentUrls.push(profile.agreementDocument);
+    if (profile.nomineeProofDocument) documentUrls.push(profile.nomineeProofDocument);
+  });
+
+  if (documentUrls.length > 0) {
+    await deleteCloudinaryFiles(documentUrls);
+  }
+
+  // Delete profiles and user accounts
+  await ClientProfile.deleteMany({ userId: { $in: clientIds } });
+  const deleteResult = await User.deleteMany({ _id: { $in: clientIds } });
+
+  res.status(200).json({
+    success: true,
+    message: `All client accounts (${deleteResult.deletedCount}) and profiles cleared successfully.`,
+    count: deleteResult.deletedCount
+  });
+});
+
 module.exports = {
   createClient,
   getAllClients,
   getClientById,
   updateClient,
   deleteClient,
+  clearAllClients,
   previewClientDashboard,
   getAllAgents,
   updateClientRoiRate,
