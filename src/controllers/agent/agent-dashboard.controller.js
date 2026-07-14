@@ -3,6 +3,7 @@ const AgentProfile = require('../../models/AgentProfile.model');
 const ClientProfile = require('../../models/ClientProfile.model');
 const Investment = require('../../models/Investment.model');
 const AgentCommission = require('../../models/AgentCommission.model');
+const Transaction = require('../../models/Transaction.model');
 const agentDetailsService = require('../../services/agent-details.service');
 const asyncHandler = require('../../utils/asyncHandler');
 const AppError = require('../../utils/AppError');
@@ -13,11 +14,244 @@ const { ROLES } = require('../../constants/roles');
  * GET /api/agent/dashboard
  */
 const getAgentDashboard = asyncHandler(async (req, res, next) => {
-  const details = await agentDetailsService.getAgentDetailsData(req.user.id);
+  const agentId = req.user.id;
+
+  // 1) Find assigned clients
+  const clients = await User.find({ role: ROLES.CLIENT, assignedAgent: agentId }).sort({ createdAt: -1 }).lean();
+  const clientIds = clients.map(c => c._id);
+
+  // 2) Find active client investments
+  const investmentsList = clientIds.length > 0
+    ? await Investment.find({ clientId: { $in: clientIds }, status: 'active' }).lean()
+    : [];
+
+  const totalClientsInvestment = investmentsList.reduce((sum, inv) => sum + (inv.investmentAmount || 0), 0);
+
+  // 3) Calculate commissions
+  const commissions = await AgentCommission.find({ agentId }).lean();
+  const commissionPaid = commissions.filter(c => c.status === 'PAID').reduce((sum, c) => sum + c.amount, 0);
+  const commissionPending = commissions.filter(c => c.status === 'PENDING').reduce((sum, c) => sum + c.amount, 0);
   
+  const now = new Date();
+  const thisMonthCommission = commissions
+    .filter(c => {
+      const d = new Date(c.date);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    })
+    .reduce((sum, c) => sum + c.amount, 0);
+
+  // 4) Dynamically compute reward milestones status and progress
+  const milestones = [
+    {
+      id: 'silver',
+      name: 'Silver Milestone',
+      target: 'Bring 5 clients to KFPL',
+      current: clients.length,
+      limit: 5,
+      status: clients.length >= 5 ? 'UNLOCKED' : 'LOCKED'
+    },
+    {
+      id: 'gold',
+      name: 'Gold Milestone',
+      target: 'Bring 10 clients to unlock a bonus reward',
+      current: clients.length,
+      limit: 10,
+      status: clients.length >= 10 ? 'UNLOCKED' : 'LOCKED'
+    },
+    {
+      id: 'cash_bonus',
+      name: 'Cash Bonus \u20B910K',
+      target: 'Generate \u20B950L total client investment',
+      current: totalClientsInvestment,
+      limit: 5000000,
+      status: totalClientsInvestment >= 5000000 ? 'CLAIMED' : 'LOCKED'
+    },
+    {
+      id: 'platinum',
+      name: 'Platinum Star',
+      target: 'Bring 20 clients to KFPL',
+      current: clients.length,
+      limit: 20,
+      status: clients.length >= 20 ? 'UNLOCKED' : 'LOCKED'
+    },
+    {
+      id: 'luxury_trip',
+      name: 'Luxury Trip',
+      target: 'Generate \u20B92Cr total investment to win a luxury trip',
+      current: totalClientsInvestment,
+      limit: 20000000,
+      status: totalClientsInvestment >= 20000000 ? 'UNLOCKED' : 'LOCKED'
+    }
+  ];
+
+  const rewardsEarnedCount = milestones.filter(m => m.status === 'UNLOCKED' || m.status === 'CLAIMED').length;
+
+  // 5) Top Clients list
+  const clientProfiles = clientIds.length > 0
+    ? await ClientProfile.find({ userId: { $in: clientIds } }).lean()
+    : [];
+
+  const topClientsMap = {};
+  clients.forEach(c => {
+    const profile = clientProfiles.find(p => String(p.userId) === String(c._id)) || null;
+    topClientsMap[c._id.toString()] = {
+      clientId: c._id,
+      name: c.name,
+      code: c.clientCode || 'KFPL-XXX',
+      status: profile ? (profile.status || 'ACTIVE').toUpperCase() : 'ACTIVE',
+      totalInvestment: 0
+    };
+  });
+  investmentsList.forEach(inv => {
+    const cidStr = inv.clientId.toString();
+    if (topClientsMap[cidStr]) {
+      topClientsMap[cidStr].totalInvestment += (inv.investmentAmount || 0);
+    }
+  });
+
+  const topClients = Object.values(topClientsMap)
+    .sort((a, b) => b.totalInvestment - a.totalInvestment)
+    .slice(0, 10);
+
+  // 6) Recent Activities Feed
+  const recentActivities = [];
+
+  // Track client registrations
+  clients.slice(0, 5).forEach(c => {
+    recentActivities.push({
+      type: 'registration',
+      message: `Client ${c.name} registered on portal`,
+      timestamp: c.createdAt
+    });
+  });
+
+  // Track client transactions
+  const clientTransactions = clientIds.length > 0
+    ? await Transaction.find({ clientId: { $in: clientIds } }).sort({ createdAt: -1 }).limit(10).lean()
+    : [];
+
+  clientTransactions.forEach(tx => {
+    recentActivities.push({
+      type: tx.type,
+      message: `${tx.clientName || 'Client'} requested a ${tx.amount.toLocaleString('en-IN')} ${tx.type}`,
+      timestamp: tx.createdAt
+    });
+  });
+
+  recentActivities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const finalActivitiesFeed = recentActivities.slice(0, 5).map(act => {
+    const diffMs = Date.now() - new Date(act.timestamp).getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffHr = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHr / 24);
+
+    let timeStr = 'Just now';
+    if (diffDay > 0) timeStr = `${diffDay} day(s) ago`;
+    else if (diffHr > 0) timeStr = `${diffHr} hour(s) ago`;
+    else if (diffMin > 0) timeStr = `${diffMin} minute(s) ago`;
+
+    return {
+      type: act.type,
+      message: act.message,
+      timestamp: timeStr
+    };
+  });
+
+  // 7) Charts - Client Investment Share (Pie Chart)
+  const segmentAllocationMap = {};
+  investmentsList.forEach(inv => {
+    const amt = inv.investmentAmount || 0;
+    if (inv.segmentAllocation && inv.segmentAllocation.length > 0) {
+      inv.segmentAllocation.forEach(alloc => {
+        const name = alloc.segmentName;
+        const pct = alloc.allocationPercentage || 0;
+        segmentAllocationMap[name] = (segmentAllocationMap[name] || 0) + (amt * pct / 100);
+      });
+    } else {
+      const name = inv.segment || 'Trading & Syndication';
+      segmentAllocationMap[name] = (segmentAllocationMap[name] || 0) + amt;
+    }
+  });
+
+  const clientInvestmentShare = Object.keys(segmentAllocationMap).map(name => {
+    const amount = segmentAllocationMap[name];
+    const percentage = totalClientsInvestment > 0 ? Math.round((amount / totalClientsInvestment) * 100) : 0;
+    return {
+      segment: name,
+      amount,
+      percentage
+    };
+  });
+
+  // 8) Charts - Monthly Commission Trend & Client Onboarding Momentum
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthlyCommissionPaidMap = Array(12).fill(0);
+  const monthlyCommissionPendingMap = Array(12).fill(0);
+  const monthlyOnboardingMap = Array(12).fill(0);
+  const monthlyWithdrawalMap = Array(12).fill(0);
+
+  commissions.forEach(c => {
+    const month = new Date(c.date).getMonth();
+    if (c.status === 'PAID') {
+      monthlyCommissionPaidMap[month] += (c.amount || 0);
+    } else {
+      monthlyCommissionPendingMap[month] += (c.amount || 0);
+    }
+  });
+
+  clients.forEach(c => {
+    const month = new Date(c.createdAt).getMonth();
+    monthlyOnboardingMap[month] += 1;
+  });
+
+  clientTransactions.forEach(tx => {
+    if (tx.type === 'withdrawal') {
+      const month = new Date(tx.createdAt).getMonth();
+      monthlyWithdrawalMap[month] += (tx.amount || 0);
+    }
+  });
+
+  const monthlyCommissionTrend = monthNames.map((name, index) => ({
+    month: name,
+    paid: monthlyCommissionPaidMap[index],
+    pending: monthlyCommissionPendingMap[index]
+  }));
+
+  const clientOnboardingMomentum = monthNames.map((name, index) => ({
+    month: name,
+    count: monthlyOnboardingMap[index]
+  }));
+
+  const withdrawalRequestTrend = monthNames.map((name, index) => ({
+    month: name,
+    amount: monthlyWithdrawalMap[index]
+  }));
+
+  // 9) Return response payload
   res.status(200).json({
     success: true,
-    data: details,
+    data: {
+      welcome: {
+        agentName: req.user.name,
+        totalClients: clients.length,
+        activeInvestments: investmentsList.length
+      },
+      stats: {
+        totalClients: clients.length,
+        activeInvestments: investmentsList.length,
+        thisMonthCommission,
+        commissionPaid,
+        commissionPending,
+        rewardsEarned: rewardsEarnedCount
+      },
+      milestones,
+      topClients,
+      recentActivity: finalActivitiesFeed,
+      clientInvestmentShare,
+      monthlyCommissionTrend,
+      clientOnboardingMomentum,
+      withdrawalRequestTrend
+    }
   });
 });
 
