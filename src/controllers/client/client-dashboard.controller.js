@@ -3,6 +3,8 @@ const Investment = require('../../models/Investment.model');
 const RoiPayout = require('../../models/RoiPayout.model');
 const User = require('../../models/User.model');
 const Payout = require('../../models/Payout.model');
+const Project = require('../../models/Project.model');
+const AgentProfile = require('../../models/AgentProfile.model');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 
@@ -18,50 +20,48 @@ const calculateDashboardData = async (userId) => {
   }
 
   // Fetch all investments belonging to the client
-  const investments = await Investment.find({ clientId: userId }).sort({ investmentDate: -1 });
+  const investments = await Investment.find({ clientId: userId }).sort({ investmentDate: -1 }).lean();
 
   // Filter out cancelled investments for the totals
   const validInvestments = investments.filter(inv => inv.status !== 'cancelled');
-  const totalInvestment = validInvestments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
+  const totalInvestment = validInvestments.reduce((sum, inv) => sum + (inv.investmentAmount || 0), 0);
 
   // Active investments calculations
   const activeInvestmentsList = investments.filter(inv => inv.status === 'active');
   const activeInvestmentsCount = activeInvestmentsList.length;
 
-  // Average ROI percentage of active investments
-  let roiAverage = 0;
+  // Average ROI rate of active investments
+  let roiRate = parseFloat(profile.monthlyRoi) || 0;
   if (activeInvestmentsCount > 0) {
-    const roiSum = activeInvestmentsList.reduce((sum, inv) => sum + inv.roiPercentage, 0);
-    roiAverage = Number((roiSum / activeInvestmentsCount).toFixed(2));
+    const roiSum = activeInvestmentsList.reduce((sum, inv) => sum + (inv.roiPercentage || 0), 0);
+    roiRate = Number((roiSum / activeInvestmentsCount).toFixed(2));
   }
 
-  const documents = {
-    panDocument: profile.panDocument,
-    aadhaarDocument: profile.aadhaarDocument,
-    bankProofDocument: profile.bankProofDocument,
-    agreementDocument: profile.agreementDocument,
-    nomineeProofDocument: profile.nomineeProofDocument,
-  };
+  // Monthly expected return amount calculation
+  let expectedMonthlyRoi = 0;
+  activeInvestmentsList.forEach(inv => {
+    const rate = inv.roiPercentage || parseFloat(profile.monthlyRoi) || 0;
+    expectedMonthlyRoi += (inv.investmentAmount || 0) * (rate / 100);
+  });
+  expectedMonthlyRoi = Math.round(expectedMonthlyRoi);
 
-  // Compute Next ROI Date
+  // Next ROI Date calculation
   let nextRoiDate = null;
   if (activeInvestmentsCount > 0) {
     const earliestInvestment = [...activeInvestmentsList].sort((a, b) => new Date(a.investmentDate) - new Date(b.investmentDate))[0];
-    const startDate = new Date(earliestInvestment.investmentDate);
+    const startDate = earliestInvestment.investmentDate ? new Date(earliestInvestment.investmentDate) : new Date();
     
-    // One month from earliest investment
+    // One month anniversary
     const oneMonthLater = new Date(startDate);
     oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
 
     const now = new Date();
     if (now < oneMonthLater) {
-      // First month: no ROI given, returns null
-      nextRoiDate = null;
+      nextRoiDate = oneMonthLater;
     } else {
-      // Next monthly anniversary from investmentDate
       let candidate = new Date(oneMonthLater);
       while (candidate <= now) {
-        candidate.setMonth(candidate.getMonth() + 1);
+        candidate.setMonth(candidate.setMonth(candidate.getMonth() + 1));
       }
       nextRoiDate = candidate;
     }
@@ -76,16 +76,150 @@ const calculateDashboardData = async (userId) => {
     return `${day} ${monthStr} ${year}`;
   };
 
+  const nextRoiDateFormatted = nextRoiDate ? formatDateToDDMMMYYYY(nextRoiDate) : '—';
+
+  // 1) Wealth Advisor details
+  const clientUser = await User.findById(userId).populate('assignedAgent').lean();
+  let wealthAdvisor = null;
+  if (clientUser && clientUser.assignedAgent) {
+    const agentUser = clientUser.assignedAgent;
+    const agentProfile = await AgentProfile.findOne({ userId: agentUser._id }).lean();
+    wealthAdvisor = {
+      name: agentUser.name,
+      code: agentUser.clientCode || 'AGT-007',
+      phone: agentProfile ? agentProfile.phone : '',
+      email: agentUser.email || '',
+      role: 'Wealth Advisor',
+      whatsAppLink: agentProfile && agentProfile.phone ? `https://wa.me/91${agentProfile.phone.replace(/[^0-9]/g, '')}` : ''
+    };
+  }
+
+  // 2) Live Portfolio & Segment Updates (Fetch projects details)
+  const projectIds = activeInvestmentsList.map(inv => inv.projectId).filter(Boolean);
+  const projectsList = await Project.find({ _id: { $in: projectIds } }).lean();
+  
+  const livePortfolio = activeInvestmentsList.map(inv => {
+    const project = projectsList.find(p => String(p._id) === String(inv.projectId)) || null;
+    return {
+      investmentId: inv._id,
+      investmentAmount: inv.investmentAmount,
+      projectName: project ? project.name : (inv.clientName + ' Deal'),
+      segment: project ? project.segment : (inv.segment || 'Trading & Syndication'),
+      status: project ? project.status : 'Active',
+      milestoneProgress: project ? project.milestoneProgress : 99,
+      health: project ? project.health : 'On Track',
+      bannerImage: project ? project.bannerImage : '',
+      summary: project ? project.summary : '',
+      currentUpdate: project ? project.currentUpdate : 'Portfolio performance is normal and on track.'
+    };
+  });
+
+  // 3) Stepper Journey Statuses
+  const clientCode = clientUser ? clientUser.clientCode : '';
+  const payoutsCount = clientCode ? await Payout.countDocuments({ recipientId: clientCode, status: 'paid' }) : 0;
+  
+  const steps = [
+    { step: 1, label: 'Account Created', completed: true },
+    { step: 2, label: 'Onboarding Details', completed: !!(profile.phone && profile.address) },
+    { step: 3, label: 'KYC Submitted', completed: !!(profile.panNumber && profile.aadhaarNumber) },
+    { step: 4, label: 'Agreement Signed', completed: !!profile.agreementDocument },
+    { step: 5, label: 'First Investment', completed: investments.length > 0 },
+    { step: 6, label: 'ROI Configured', completed: activeInvestmentsCount > 0 || !!profile.monthlyRoi },
+    { step: 7, label: 'First ROI Received', completed: payoutsCount > 0 }
+  ];
+  
+  const completedCount = steps.filter(s => s.completed).length;
+  const journeyPercentage = Math.round((completedCount / 7) * 100);
+
+  // 4) Complete Profile Banner visibility check
+  const isProfileComplete = !!(profile.nomineeName && profile.riskProfile);
+
+  // 5) Asset Allocation aggregation (Pie Chart)
+  const segmentAllocationMap = {};
+  activeInvestmentsList.forEach(inv => {
+    const amt = inv.investmentAmount || 0;
+    if (inv.segmentAllocation && inv.segmentAllocation.length > 0) {
+      inv.segmentAllocation.forEach(alloc => {
+        const name = alloc.segmentName;
+        const pct = alloc.allocationPercentage || 0;
+        segmentAllocationMap[name] = (segmentAllocationMap[name] || 0) + (amt * pct / 100);
+      });
+    } else {
+      const name = inv.segment || 'Trading & Syndication';
+      segmentAllocationMap[name] = (segmentAllocationMap[name] || 0) + amt;
+    }
+  });
+
+  const assetAllocation = Object.keys(segmentAllocationMap).map(name => {
+    const amount = segmentAllocationMap[name];
+    const percentage = totalInvestment > 0 ? Math.round((amount / totalInvestment) * 100) : 0;
+    return {
+      segment: name,
+      amount,
+      percentage
+    };
+  });
+
+  // 6) Historical ROI Earnings (Bar Chart) & Payouts Feed
+  const clientPayouts = clientCode ? await Payout.find({ recipientId: clientCode, recipientType: 'Client Return (ROI)' }).sort({ payoutDate: -1 }).lean() : [];
+  const clientRoiPayouts = await RoiPayout.find({ clientId: userId, status: 'PAID' }).sort({ processedDate: -1 }).lean();
+
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthlyRoiMap = Array(12).fill(0);
+
+  clientPayouts.forEach(p => {
+    if (p.status === 'paid' && p.payoutDate) {
+      const parts = p.payoutDate.split('-');
+      if (parts.length === 3) {
+        const idx = parseInt(parts[1], 10) - 1;
+        if (idx >= 0 && idx < 12) monthlyRoiMap[idx] += (p.amount || 0);
+      }
+    }
+  });
+
+  clientRoiPayouts.forEach(p => {
+    const date = p.processedDate ? new Date(p.processedDate) : new Date(p.createdAt);
+    monthlyRoiMap[date.getMonth()] += (p.amount || 0);
+  });
+
+  const monthlyRoiEarnings = monthNames.map((name, index) => ({
+    month: name,
+    amount: monthlyRoiMap[index]
+  }));
+
+  const recentPayouts = clientPayouts.slice(0, 5).map(p => ({
+    id: p._id,
+    amount: p.amount,
+    date: p.payoutDate,
+    paymentMode: p.paymentMode || 'Bank Transfer',
+    status: p.status.toUpperCase(),
+    refId: p.transactionRefId || '—'
+  }));
+
   return {
-    profile,
+    profile: {
+      ...profile.toObject(),
+      clientCode: clientUser ? clientUser.clientCode : '',
+    },
     investments,
     totalInvestment,
-    activeInvestments: activeInvestmentsCount,
-    roiAverage,
-    riskProfile: profile.riskProfile,
-    documents,
+    activeInvestments: activeInvestmentsList,
+    activeInvestmentsCount,
+    roiRate,
+    expectedMonthlyRoi,
+    perkTier: (profile.tier || 'GOLD').toUpperCase(),
     nextRoiDate: nextRoiDate ? nextRoiDate.toISOString().split('T')[0] : null,
-    nextRoiDateFormatted: nextRoiDate ? formatDateToDDMMMYYYY(nextRoiDate) : '—',
+    nextRoiDateFormatted,
+    isProfileComplete,
+    journey: {
+      percentage: journeyPercentage,
+      steps
+    },
+    livePortfolio,
+    assetAllocation,
+    monthlyRoiEarnings,
+    recentPayouts,
+    wealthAdvisor
   };
 };
 
