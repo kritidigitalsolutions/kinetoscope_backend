@@ -66,7 +66,31 @@ const login = asyncHandler(async (req, res, next) => {
     return next(new AppError('Invalid email address or password', 401));
   }
 
-  // 3) Verify account is active
+  // 3) Enforce dynamic role restriction based on origin/referer headers to prevent cross-portal authentication
+  const origin = req.headers.origin || req.headers.referer || '';
+  let expectedRole = ROLES.SUPER_ADMIN;
+
+  if (origin.includes('clientadmin') || origin.includes('localhost:5174') || origin.includes('localhost:3000')) {
+    expectedRole = ROLES.CLIENT;
+  } else if (origin.includes('agentadmin') || origin.includes('localhost:5175')) {
+    expectedRole = ROLES.AGENT;
+  } else if (origin.includes('superadmin') || origin.includes('localhost:5173')) {
+    expectedRole = ROLES.SUPER_ADMIN;
+  } else {
+    expectedRole = user.role;
+  }
+
+  if (user.role !== expectedRole) {
+    if (expectedRole === ROLES.CLIENT) {
+      return next(new AppError('Access Denied. Only client accounts are permitted to log in to this portal.', 403));
+    } else if (expectedRole === ROLES.AGENT) {
+      return next(new AppError('Access Denied. Only agent accounts are permitted to log in to this portal.', 403));
+    } else {
+      return next(new AppError('Access Denied. Only super admin accounts are permitted to log in to this portal.', 403));
+    }
+  }
+
+  // 4) Verify account is active
   if (!user.isActive) {
     return next(new AppError('Your account has been deactivated. Please contact support.', 403));
   }
@@ -150,6 +174,24 @@ const verify2FA = asyncHandler(async (req, res, next) => {
   const user = await User.findOne({ email });
   if (!user) {
     return next(new AppError('Authentication failed. User not found.', 401));
+  }
+
+  // Enforce dynamic role check on 2FA verify
+  const origin = req.headers.origin || req.headers.referer || '';
+  let expectedRole = ROLES.SUPER_ADMIN;
+
+  if (origin.includes('clientadmin') || origin.includes('localhost:5174') || origin.includes('localhost:3000')) {
+    expectedRole = ROLES.CLIENT;
+  } else if (origin.includes('agentadmin') || origin.includes('localhost:5175')) {
+    expectedRole = ROLES.AGENT;
+  } else if (origin.includes('superadmin') || origin.includes('localhost:5173')) {
+    expectedRole = ROLES.SUPER_ADMIN;
+  } else {
+    expectedRole = user.role;
+  }
+
+  if (user.role !== expectedRole) {
+    return next(new AppError('Access Denied. You do not have permission to verify 2FA on this portal.', 403));
   }
 
   // 2) Find active OTP record for login-2fa purpose
