@@ -434,6 +434,7 @@ const updateAgent = asyncHandler(async (req, res, next) => {
     'nomineeEmail',
     'nomineeResidency',
     'status',
+    'kycStatus',
   ];
 
 
@@ -442,6 +443,20 @@ const updateAgent = asyncHandler(async (req, res, next) => {
       profileUpdates[field] = req.body[field];
     }
   });
+
+  // Align status and isActive when kycStatus is updated to VERIFIED
+  if (req.body.kycStatus === 'VERIFIED') {
+    profileUpdates.kycStatus = 'VERIFIED';
+    profileUpdates.status = 'active';
+    userUpdates.isActive = true;
+  }
+
+  // Align User model isActive when agent status is updated
+  if (req.body.status) {
+    const normalizedStatus = req.body.status.toLowerCase();
+    profileUpdates.status = normalizedStatus;
+    userUpdates.isActive = (normalizedStatus === 'active');
+  }
 
   if (userUpdates.email) {
     profileUpdates.email = userUpdates.email;

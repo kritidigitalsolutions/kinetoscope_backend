@@ -89,6 +89,11 @@ const getClientDetailsData = async (clientId) => {
       bankProofDocument: profile.bankProofDocument || '',
       agreementDocument: profile.agreementDocument || '',
       nomineeProofDocument: profile.nomineeProofDocument || '',
+      panDocumentVerified: profile.panDocumentVerified || false,
+      aadhaarDocumentVerified: profile.aadhaarDocumentVerified || false,
+      bankProofDocumentVerified: profile.bankProofDocumentVerified || false,
+      agreementDocumentVerified: profile.agreementDocumentVerified || false,
+      nomineeProofDocumentVerified: profile.nomineeProofDocumentVerified || false,
     },
   };
 };
