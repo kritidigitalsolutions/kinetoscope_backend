@@ -50,6 +50,7 @@ const setupAdmin = asyncHandler(async (req, res, next) => {
  * Authentication Login Handler
  * POST /api/v1/auth/login
  */
+// Trigger rebuild: Ensure all portals can authenticate via general login
 const login = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
 
