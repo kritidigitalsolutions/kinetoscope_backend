@@ -65,14 +65,14 @@ const login = asyncHandler(async (req, res, next) => {
     return next(new AppError('Invalid email address or password', 401));
   }
 
-  // 3) Verify account is active
-  if (!user.isActive) {
-    return next(new AppError('Your account has been deactivated. Please contact support.', 403));
-  }
-
-  // Enforce role = super-admin restriction. Return 403 if non-super-admin.
+  // 3) Enforce role = super_admin restriction
   if (user.role !== ROLES.SUPER_ADMIN) {
     return next(new AppError('Access Denied. Only super admin accounts are permitted to log in to this portal.', 403));
+  }
+
+  // 4) Verify account is active
+  if (!user.isActive) {
+    return next(new AppError('Your account has been deactivated. Please contact support.', 403));
   }
 
   // 4) Check if 2FA (OTP Verification) is enabled
@@ -153,7 +153,7 @@ const verify2FA = asyncHandler(async (req, res, next) => {
   // 1) Find user by email
   const user = await User.findOne({ email });
   if (!user || user.role !== ROLES.SUPER_ADMIN) {
-    return next(new AppError('Access Denied. User not found or is not permitted.', 401));
+    return next(new AppError('Authentication failed. User not found.', 401));
   }
 
   // 2) Find active OTP record for login-2fa purpose
