@@ -1,5 +1,7 @@
+const mongoose = require('mongoose');
 const User = require('../../models/User.model');
 const ClientProfile = require('../../models/ClientProfile.model');
+const AgentProfile = require('../../models/AgentProfile.model');
 const Payout = require('../../models/Payout.model');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
@@ -169,6 +171,41 @@ const seedMockPayouts = async (creatorId) => {
   }
 };
 
+async function resolveRecipientCode(id) {
+  if (!id) return id;
+  const strId = String(id).trim();
+
+  // If it's a mongo ID, let's resolve it
+  if (mongoose.Types.ObjectId.isValid(strId)) {
+    // 1. Try finding User directly
+    let user = await User.findById(strId);
+    if (user && user.clientCode) {
+      return user.clientCode;
+    }
+
+    // 2. Try finding in ClientProfile
+    const clientProfile = await ClientProfile.findById(strId);
+    if (clientProfile && clientProfile.userId) {
+      user = await User.findById(clientProfile.userId);
+      if (user && user.clientCode) {
+        return user.clientCode;
+      }
+    }
+
+    // 3. Try finding in AgentProfile
+    const agentProfile = await AgentProfile.findById(strId);
+    if (agentProfile && agentProfile.userId) {
+      user = await User.findById(agentProfile.userId);
+      if (user && user.clientCode) {
+        return user.clientCode;
+      }
+    }
+  }
+
+  // Otherwise return as is
+  return strId.toUpperCase();
+}
+
 /**
  * Record Payout Details (ROI or Commission)
  * POST /api/super-admin/roi/payouts
@@ -194,6 +231,10 @@ const recordPayout = asyncHandler(async (req, res, next) => {
     normalizedRecipientType = 'Agent Commission';
   }
 
+  // Resolve recipientId and clientId to human-readable codes if passed as ObjectIds
+  const resolvedRecipientId = await resolveRecipientCode(recipientId);
+  const resolvedClientId = clientId ? await resolveRecipientCode(clientId) : '';
+
   // Check unique constraints for transactionRefId if provided
   if (transactionRefId) {
     const existing = await Payout.findOne({ transactionRefId });
@@ -209,9 +250,9 @@ const recordPayout = asyncHandler(async (req, res, next) => {
 
   const payout = await Payout.create({
     recipientType: normalizedRecipientType,
-    recipientId,
+    recipientId: resolvedRecipientId,
     commissionType: commissionType || '',
-    clientId: clientId || '',
+    clientId: resolvedClientId,
     amount: numericAmount,
     payoutDate,
     paymentMode: paymentMode || '',
@@ -255,11 +296,27 @@ const getPayouts = asyncHandler(async (req, res, next) => {
 
   // Populate recipient names
   const recipientIds = payouts.map(p => p.recipientId);
-  const users = await User.find({ clientCode: { $in: recipientIds } }, { name: 1, clientCode: 1 }).lean();
-  
+  const objectIds = recipientIds.filter(id => mongoose.Types.ObjectId.isValid(id));
+
+  const [usersByCode, usersById, clientProfiles, agentProfiles] = await Promise.all([
+    User.find({ clientCode: { $in: recipientIds } }, { name: 1, clientCode: 1 }).lean(),
+    User.find({ _id: { $in: objectIds } }, { name: 1 }).lean(),
+    ClientProfile.find({ _id: { $in: objectIds } }).populate('userId', 'name').lean(),
+    AgentProfile.find({ _id: { $in: objectIds } }).populate('userId', 'name').lean()
+  ]);
+
   const userMap = {};
-  users.forEach(u => {
-    userMap[u.clientCode] = u.name;
+  usersByCode.forEach(u => {
+    if (u.clientCode) userMap[u.clientCode] = u.name;
+  });
+  usersById.forEach(u => {
+    userMap[u._id.toString()] = u.name;
+  });
+  clientProfiles.forEach(cp => {
+    if (cp.userId) userMap[cp._id.toString()] = cp.userId.name;
+  });
+  agentProfiles.forEach(ap => {
+    if (ap.userId) userMap[ap._id.toString()] = ap.userId.name;
   });
 
   let formatted = payouts.map(p => {
