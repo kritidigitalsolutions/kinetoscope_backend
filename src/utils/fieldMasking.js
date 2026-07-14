@@ -195,15 +195,8 @@ function maskResponseData(data, user) {
           // Super Admin gets complete visibility
           result[key] = val;
         } else if (role === ROLES.AGENT) {
-          // Agent:
-          // Level 1: Masked
-          // Level 2: Masked
-          // Level 3: Full Access
-          if (rule.level === 1 || rule.level === 2) {
-            result[key] = rule.mask ? rule.mask(val) : '***';
-          } else {
-            result[key] = val;
-          }
+          // Agent gets complete visibility of all fields (same as Super Admin)
+          result[key] = val;
         } else if (role === ROLES.CLIENT) {
           // Client:
           // Level 1 & 2: Full Access to own data, Masked for others
