@@ -1,4 +1,5 @@
 const express = require('express');
+const { getAdminDashboard } = require('../../controllers/super-admin/dashboard.controller');
 const { protect, restrictTo } = require('../../middlewares/auth.middleware');
 const { ROLES } = require('../../constants/roles');
 const {
@@ -249,9 +250,7 @@ router.use(protect);
 router.use(restrictTo(ROLES.SUPER_ADMIN));
 
 // 1. Dashboard Analytics
-router.get('/dashboard/analytics', (req, res) => {
-  res.status(200).json({ status: 'success', message: 'Dashboard Analytics placeholder' });
-});
+router.get('/dashboard/analytics', getAdminDashboard);
 
 // 2. Client / Investor Management
 router.route('/clients')
