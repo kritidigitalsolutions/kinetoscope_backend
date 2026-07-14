@@ -250,7 +250,7 @@ router.use(protect);
 router.use(restrictTo(ROLES.SUPER_ADMIN));
 
 // 1. Dashboard Analytics
-router.get('/dashboard/analytics', getAdminDashboard);
+router.get('/dashboard', getAdminDashboard);
 
 // 2. Client / Investor Management
 router.route('/clients')
