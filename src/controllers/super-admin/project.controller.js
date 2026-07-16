@@ -168,9 +168,6 @@ const project = await Project.create({
  * GET /api/super-admin/projects
  */
 const getAllProjects = asyncHandler(async (req, res, next) => {
-  // Auto-seed standard projects if empty
-  await seedMockProjects(req.user.id);
-
   const projects = await Project.find()
     .populate('createdBy', 'name email')
     .sort({ createdAt: -1 })

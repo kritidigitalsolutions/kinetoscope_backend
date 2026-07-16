@@ -123,8 +123,6 @@ const publishProjectUpdate = asyncHandler(async (req, res, next) => {
  * Query filters: segment, search (note or project name)
  */
 const getUpdateHistory = asyncHandler(async (req, res, next) => {
-  await seedMockUpdateHistory(req.user.id);
-
   const { segment, search } = req.query;
   const query = {};
 

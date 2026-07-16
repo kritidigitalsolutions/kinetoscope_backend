@@ -116,8 +116,6 @@ const createPerformanceReward = asyncHandler(async (req, res, next) => {
  * GET /api/super-admin/rewards
  */
 const getAllPerformanceRewards = asyncHandler(async (req, res, next) => {
-  await seedMockRewards(req.user.id);
-
   const rewards = await PerformanceReward.find()
     .populate('createdBy', 'name email')
     .sort({ createdAt: -1 })
@@ -287,6 +285,52 @@ const getAgentPerformanceRewards = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * Claim a Performance Reward (Agent view)
+ * POST /api/agent/rewards/claim
+ */
+const claimReward = asyncHandler(async (req, res, next) => {
+  const RewardClaim = require('../../models/RewardClaim.model');
+  const agentId = req.user.id;
+  const { rewardId, deliveryAddress, contactNumber, additionalNote } = req.body;
+
+  if (!rewardId) {
+    return next(new AppError('Please provide a valid Reward ID', 400));
+  }
+
+  if (!deliveryAddress || !contactNumber) {
+    return next(new AppError('Delivery address and contact number are required to claim a reward', 400));
+  }
+
+  // 1) Verify the reward exists and is active
+  const reward = await PerformanceReward.findOne({ _id: rewardId, isActive: true });
+  if (!reward) {
+    return next(new AppError('Performance reward not found or is currently inactive', 404));
+  }
+
+  // 2) Prevent double claims
+  const existingClaim = await RewardClaim.findOne({ agentId, rewardId, status: { $ne: 'REJECTED' } });
+  if (existingClaim) {
+    return next(new AppError('You have already submitted a claim request for this reward', 400));
+  }
+
+  // 3) Create the Claim request
+  const claim = await RewardClaim.create({
+    agentId,
+    rewardId,
+    deliveryAddress,
+    contactNumber,
+    additionalNote: additionalNote || '',
+    status: 'PENDING',
+  });
+
+  res.status(201).json({
+    success: true,
+    message: 'Reward claim request submitted successfully and is pending admin approval.',
+    data: claim,
+  });
+});
+
 module.exports = {
   createPerformanceReward,
   getAllPerformanceRewards,
@@ -294,4 +338,5 @@ module.exports = {
   updatePerformanceReward,
   deletePerformanceReward,
   getAgentPerformanceRewards,
+  claimReward,
 };

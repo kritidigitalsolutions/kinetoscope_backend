@@ -462,7 +462,7 @@ const updateAgent = asyncHandler(async (req, res, next) => {
     profileUpdates.email = userUpdates.email;
   }
 
-  // 4) Process optional document uploads
+  // 4) Process optional document uploads using buffer upload to Cloudinary (in-memory)
   const fileFields = [
     'panDocument',
     'idProofDocument',
@@ -470,6 +470,7 @@ const updateAgent = asyncHandler(async (req, res, next) => {
     'nomineeProofDocument',
   ];
 
+  const { uploadBufferToCloudinary } = require('../../services/cloudinary.service');
   const uploadedUrls = [];
   try {
     if (req.files) {
@@ -484,8 +485,9 @@ const updateAgent = asyncHandler(async (req, res, next) => {
             }
           }
 
-          // Assign new Cloudinary URL directly
-          const newUrl = req.files[field][0].path;
+          // Upload memory buffer to Cloudinary
+          const buffer = req.files[field][0].buffer;
+          const newUrl = await uploadBufferToCloudinary(buffer, 'kinetoscope');
           profileUpdates[field] = newUrl;
           uploadedUrls.push(newUrl);
         }
@@ -657,21 +659,7 @@ const getAgentCommissions = asyncHandler(async (req, res, next) => {
   }
 
   // 2) Find commission records in DB
-  let commissions = await AgentCommission.find({ agentId }).sort({ createdAt: -1 });
-
-  // 3) If no records exist, auto-seed realistic mock data to match screens
-  if (commissions.length === 0) {
-    const mockData = [
-      { agentId, period: 'Jan 2025', date: new Date('2025-01-31'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Feb 2025', date: new Date('2025-02-28'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Mar 2025', date: new Date('2025-03-31'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Apr 2025', date: new Date('2025-04-30'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, period: 'May 2025', date: new Date('2025-05-31'), type: 'MONTHLY', amount: 33750, status: 'PENDING', remarks: 'Monthly commission payout' },
-      { agentId, period: 'Jan 2024', date: new Date('2024-01-15'), type: 'ONE TIME', amount: 900000, status: 'PAID', remarks: 'One-time onboarding bonus' },
-      { agentId, period: 'Aug 2025', date: new Date('2025-08-10'), type: 'SPECIAL', amount: 16250, status: 'PAID', remarks: 'Independence Day special bonus' },
-    ];
-    commissions = await AgentCommission.create(mockData);
-  }
+  const commissions = await AgentCommission.find({ agentId }).sort({ createdAt: -1 });
 
   res.status(200).json({
     success: true,

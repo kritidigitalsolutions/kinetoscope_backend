@@ -264,7 +264,7 @@ router.delete('/clients/clear', clearAllClients);
 
 router.route('/clients/:id')
   .get(getClientById)
-  .patch(clientOnboardingUpload, updateClientRulesByAdmin, updateClient)
+  .patch(memoryClientOnboardingUpload, updateClientRulesByAdmin, updateClient)
   .delete(deleteClient);
 
 router.get('/clients/:id/investments', getClientInvestmentsTab);
@@ -312,7 +312,7 @@ router.route('/agents')
 
 router.route('/agents/:id')
   .get(getAgentById)
-  .patch(agentOnboardingUpload, updateAgentRulesByAdmin, updateAgent)
+  .patch(memoryAgentOnboardingUpload, updateAgentRulesByAdmin, updateAgent)
   .delete(deleteAgent);
 
 router.get('/agents/:id/clients', getAgentClients);

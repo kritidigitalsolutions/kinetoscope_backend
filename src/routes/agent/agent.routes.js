@@ -17,10 +17,12 @@ const {
   getAgentCommissions,
   getAgentProfile,
   getAgentDocuments,
+  getAgentClientById,
 } = require('../../controllers/agent/agent-dashboard.controller');
 
 const {
   getAgentPerformanceRewards,
+  claimReward,
 } = require('../../controllers/super-admin/performance-reward.controller');
 
 const {
@@ -60,6 +62,7 @@ router.get('/dashboard', getAgentDashboard);
 
 // 3. Agent Client List
 router.get('/clients', getAgentClients);
+router.get('/clients/:id', getAgentClientById);
 
 // 4. Agent Commission History
 router.get('/commissions', getAgentCommissions);
@@ -110,6 +113,7 @@ router.post('/notifications/send-email', sendAgentNotificationEmail);
 
 // 11. Performance Rewards Catalog (Agent view)
 router.get('/rewards', getAgentPerformanceRewards);
+router.post('/rewards/claim', claimReward);
 
 // 12. Service Requests (Agent view)
 const { createRequestRules } = require('../../validations/super-admin/service-request.validation');

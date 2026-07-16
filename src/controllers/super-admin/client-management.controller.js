@@ -489,7 +489,7 @@ const updateClient = asyncHandler(async (req, res, next) => {
     profileUpdates.email = userUpdates.email;
   }
 
-  // 4) Process optional document uploads
+  // 4) Process optional document uploads using buffer upload to Cloudinary (in-memory)
   const fileFields = [
     'panDocument',
     'aadhaarDocument',
@@ -498,6 +498,7 @@ const updateClient = asyncHandler(async (req, res, next) => {
     'nomineeProofDocument',
   ];
 
+  const { uploadBufferToCloudinary } = require('../../services/cloudinary.service');
   const uploadedUrls = [];
   try {
     if (req.files) {
@@ -512,8 +513,9 @@ const updateClient = asyncHandler(async (req, res, next) => {
             }
           }
 
-          // Assign new Cloudinary URL directly
-          const newUrl = req.files[field][0].path;
+          // Upload memory buffer to Cloudinary
+          const buffer = req.files[field][0].buffer;
+          const newUrl = await uploadBufferToCloudinary(buffer, 'kinetoscope');
           profileUpdates[field] = newUrl;
           uploadedUrls.push(newUrl);
         }

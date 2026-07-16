@@ -16,19 +16,29 @@ const { ROLES } = require('../../constants/roles');
 const getAgentDashboard = asyncHandler(async (req, res, next) => {
   const agentId = req.user.id;
 
-  // 1) Find assigned clients
-  const clients = await User.find({ role: ROLES.CLIENT, assignedAgent: agentId }).sort({ createdAt: -1 }).lean();
+  // 1) Find assigned clients and agent commissions in parallel (Batch 1)
+  const [clients, commissions] = await Promise.all([
+    User.find({ role: ROLES.CLIENT, assignedAgent: agentId }).sort({ createdAt: -1 }).lean(),
+    AgentCommission.find({ agentId }).lean()
+  ]);
   const clientIds = clients.map(c => c._id);
 
-  // 2) Find active client investments
-  const investmentsList = clientIds.length > 0
-    ? await Investment.find({ clientId: { $in: clientIds }, status: 'active' }).lean()
-    : [];
+  // 2) Find active client investments, profiles, and transactions in parallel (Batch 2)
+  const [investmentsList, clientProfiles, clientTransactions] = await Promise.all([
+    clientIds.length > 0
+      ? Investment.find({ clientId: { $in: clientIds }, status: 'active' }).lean()
+      : Promise.resolve([]),
+    clientIds.length > 0
+      ? ClientProfile.find({ userId: { $in: clientIds } }).lean()
+      : Promise.resolve([]),
+    clientIds.length > 0
+      ? Transaction.find({ clientId: { $in: clientIds } }).sort({ createdAt: -1 }).limit(10).lean()
+      : Promise.resolve([])
+  ]);
 
   const totalClientsInvestment = investmentsList.reduce((sum, inv) => sum + (inv.investmentAmount || 0), 0);
 
   // 3) Calculate commissions
-  const commissions = await AgentCommission.find({ agentId }).lean();
   const commissionPaid = commissions.filter(c => c.status === 'PAID').reduce((sum, c) => sum + c.amount, 0);
   const commissionPending = commissions.filter(c => c.status === 'PENDING').reduce((sum, c) => sum + c.amount, 0);
   
@@ -87,10 +97,6 @@ const getAgentDashboard = asyncHandler(async (req, res, next) => {
   const rewardsEarnedCount = milestones.filter(m => m.status === 'UNLOCKED' || m.status === 'CLAIMED').length;
 
   // 5) Top Clients list
-  const clientProfiles = clientIds.length > 0
-    ? await ClientProfile.find({ userId: { $in: clientIds } }).lean()
-    : [];
-
   const topClientsMap = {};
   clients.forEach(c => {
     const profile = clientProfiles.find(p => String(p.userId) === String(c._id)) || null;
@@ -126,10 +132,6 @@ const getAgentDashboard = asyncHandler(async (req, res, next) => {
   });
 
   // Track client transactions
-  const clientTransactions = clientIds.length > 0
-    ? await Transaction.find({ clientId: { $in: clientIds } }).sort({ createdAt: -1 }).limit(10).lean()
-    : [];
-
   clientTransactions.forEach(tx => {
     recentActivities.push({
       type: tx.type,
@@ -231,11 +233,30 @@ const getAgentDashboard = asyncHandler(async (req, res, next) => {
   res.status(200).json({
     success: true,
     data: {
+      // Flat properties at the root of data for direct front-end consumption
+      agentName: req.user.name,
+      totalClients: clients.length,
+      activeInvestments: investmentsList.length,
+      thisMonthCommission,
+      thisMonthCommissions: thisMonthCommission,
+      commissionPaid,
+      totalCommissionPaid: commissionPaid,
+      commissionsPaid: commissionPaid,
+      commissionPending,
+      totalCommissionPending: commissionPending,
+      commissionsPending: commissionPending,
+      rewardsEarned: rewardsEarnedCount,
+      rewardsEarnedCount,
+      totalRewards: rewardsEarnedCount,
+
+      // Welcome object (for backward compatibility / fallback)
       welcome: {
         agentName: req.user.name,
         totalClients: clients.length,
         activeInvestments: investmentsList.length
       },
+
+      // Stats object (for backward compatibility / fallback)
       stats: {
         totalClients: clients.length,
         activeInvestments: investmentsList.length,
@@ -244,6 +265,7 @@ const getAgentDashboard = asyncHandler(async (req, res, next) => {
         commissionPending,
         rewardsEarned: rewardsEarnedCount
       },
+
       milestones,
       topClients,
       recentActivity: finalActivitiesFeed,
@@ -359,29 +381,9 @@ const getAgentCommissions = asyncHandler(async (req, res, next) => {
   const agentId = req.user.id;
 
   // Let's populate the related client details
-  let commissions = await AgentCommission.find({ agentId })
+  const commissions = await AgentCommission.find({ agentId })
     .populate('clientId', 'name email clientCode')
     .sort({ date: -1, createdAt: -1 });
-
-  // Auto-seed mock data if empty
-  if (commissions.length === 0) {
-    // 1. Fetch a client of this agent if exists, else fallback to null
-    const clientUser = await User.findOne({ assignedAgent: agentId, role: 'client' });
-    const fallbackClientId = clientUser ? clientUser._id : undefined;
-
-    const mockData = [
-      { agentId, clientId: fallbackClientId, period: 'Mar 2025', date: new Date('2025-03-31'), type: 'MONTHLY', amount: 33750, status: 'PENDING', remarks: 'Monthly commission payout' },
-      { agentId, clientId: fallbackClientId, period: 'Feb 2025', date: new Date('2025-02-28'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, clientId: fallbackClientId, period: 'Jan 2025', date: new Date('2025-01-31'), type: 'MONTHLY', amount: 33750, status: 'PAID', remarks: 'Monthly commission payout' },
-      { agentId, clientId: fallbackClientId, period: 'Onboarding', date: new Date('2024-01-15'), type: 'ONE TIME', amount: 90000, status: 'PAID', remarks: 'One-time onboarding bonus' },
-    ];
-    commissions = await AgentCommission.create(mockData);
-
-    // Re-populate clientId after creation
-    commissions = await AgentCommission.find({ agentId })
-      .populate('clientId', 'name email clientCode')
-      .sort({ date: -1, createdAt: -1 });
-  }
 
   // Calculate stats
   let totalCommissionEarned = 0;
@@ -501,10 +503,45 @@ const getAgentDocuments = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * Get details of a specific client assigned to the logged-in Agent
+ * GET /api/agent/clients/:id
+ */
+const getAgentClientById = asyncHandler(async (req, res, next) => {
+  const agentId = req.user.id;
+  const clientId = req.params.id;
+
+  // 1) Verify that the client exists and is assigned to this agent
+  const clientUser = await User.findById(clientId);
+  if (!clientUser || clientUser.role !== ROLES.CLIENT) {
+    return next(new AppError('Client not found.', 404));
+  }
+
+  if (!clientUser.assignedAgent || clientUser.assignedAgent.toString() !== agentId.toString()) {
+    return next(new AppError('Access Denied. This client is not assigned to you.', 403));
+  }
+
+  // 2) Fetch client details and documents from services
+  const clientDetailsService = require('../../services/client-details.service');
+  const details = await clientDetailsService.getClientDetailsData(clientId);
+  const documentsData = await clientDetailsService.getClientDocumentsData(clientId);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      ...details,
+      documents: documentsData.documents,
+      kycStatus: documentsData.kycStatus,
+      verificationStatus: documentsData.verificationStatus,
+    },
+  });
+});
+
 module.exports = {
   getAgentDashboard,
   getAgentClients,
   getAgentCommissions,
   getAgentProfile,
   getAgentDocuments,
+  getAgentClientById,
 };

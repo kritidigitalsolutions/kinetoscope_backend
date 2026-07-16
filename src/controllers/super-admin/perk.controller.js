@@ -90,9 +90,6 @@ const createPerk = asyncHandler(async (req, res, next) => {
  * GET /api/super-admin/perks
  */
 const getAllPerks = asyncHandler(async (req, res, next) => {
-  // Auto-seed mock perks if DB is empty
-  await seedMockPerks();
-
   const perks = await Perk.find().sort({ createdAt: -1 }).lean();
 
   // Calculate card statistics

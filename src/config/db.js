@@ -14,19 +14,30 @@ const connectDB = async () => {
   }
 
   if (!cachedConnection.promise) {
-    console.log('MongoDB: No cached connection found. Establishing new connection...');
     const opts = {
       bufferCommands: false,
-      serverSelectionTimeoutMS: 5000, // Fail fast if connection cannot be established
+      serverSelectionTimeoutMS: 30000, // Increase to 30s to allow DNS and handshake resolution on slower connections
       socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
     };
 
     const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/kfpl';
+
+    const connectWithRetry = async (retries = 5, delay = 5000) => {
+      try {
+        const mongooseInstance = await mongoose.connect(mongoUri, opts);
+        console.log(`MongoDB Connected: ${mongooseInstance.connection.host}`);
+        return mongooseInstance;
+      } catch (error) {
+        if (retries > 0) {
+          console.warn(`MongoDB Connection failed: ${error.message}. Retrying in ${delay / 1000}s... (${retries} retries left)`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return connectWithRetry(retries - 1, delay);
+        }
+        throw error;
+      }
+    };
     
-    cachedConnection.promise = mongoose.connect(mongoUri, opts).then((mongooseInstance) => {
-      console.log(`MongoDB Connected: ${mongooseInstance.connection.host}`);
-      return mongooseInstance;
-    }).catch((error) => {
+    cachedConnection.promise = connectWithRetry().catch((error) => {
       console.error(`Database connection error: ${error.message}`);
       cachedConnection.promise = null; // Clear cached promise on failure
       if (!process.env.VERCEL) {

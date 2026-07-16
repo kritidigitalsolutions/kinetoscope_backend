@@ -170,8 +170,6 @@ const createAllotment = asyncHandler(async (req, res, next) => {
  * GET /api/super-admin/dividends/stats
  */
 const getDividendStats = asyncHandler(async (req, res, next) => {
-  await seedMockDividends(req.user.id);
-
   const { projectId } = req.query;
   const query = projectId ? { projectId } : {};
 
@@ -198,8 +196,6 @@ const getDividendStats = asyncHandler(async (req, res, next) => {
  * GET /api/super-admin/dividends/allotments
  */
 const getAllAllotments = asyncHandler(async (req, res, next) => {
-  await seedMockDividends(req.user.id);
-
   let allotments = await DividendAllotment.find()
     .populate('clientId', 'name email clientCode')
     .populate('projectId', 'name segment')

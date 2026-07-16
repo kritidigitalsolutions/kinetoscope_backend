@@ -87,23 +87,12 @@ const getAdminDashboard = asyncHandler(async (req, res, next) => {
     }
   });
 
-  // Calculate percentages (fallback to mock distributions if no active investment exist yet)
+  // Calculate percentages (no mock fallbacks, only real data)
   const segmentsData = Object.keys(defaultSegments).map(name => {
     const amount = defaultSegments[name];
     let percentage = 0;
     if (aggregatedSegmentSum > 0) {
       percentage = Math.round((amount / aggregatedSegmentSum) * 100);
-    } else {
-      // Mock fallbacks mirroring UI screenshot
-      const mocks = {
-        'Film Making': 32,
-        'Distribution': 22,
-        'Music': 15,
-        'Trading & Syndication': 13,
-        'Content IP Bank': 10,
-        'Film Exhibition': 8
-      };
-      percentage = mocks[name] || 0;
     }
     return {
       segment: name,
@@ -166,8 +155,14 @@ const getAdminDashboard = asyncHandler(async (req, res, next) => {
   const monthlyCharts = monthNames.map((name, index) => ({
     month: name,
     inflow: monthlyInflowMap[index],
+    inflows: monthlyInflowMap[index],
+    investment: monthlyInflowMap[index],
+    investments: monthlyInflowMap[index],
     roiPaid: monthlyRoiMap[index],
-    withdrawal: monthlyWithdrawalMap[index]
+    roi: monthlyRoiMap[index],
+    roiAmount: monthlyRoiMap[index],
+    withdrawal: monthlyWithdrawalMap[index],
+    withdrawals: monthlyWithdrawalMap[index]
   }));
 
   // 6) Agent Performance & Contribution rankings
@@ -184,9 +179,17 @@ const getAdminDashboard = asyncHandler(async (req, res, next) => {
     agentPerformanceList.push({
       agentId: agent._id,
       name: agent.name,
+      agentName: agent.name,
       code: agent.clientCode || 'AGT-XXX',
+      agentCode: agent.clientCode || 'AGT-XXX',
       clientsCount: assignedClients.length,
-      investmentVolume: totalVolume
+      clientCount: assignedClients.length,
+      totalClients: assignedClients.length,
+      investmentVolume: totalVolume,
+      totalInvestment: totalVolume,
+      totalVolume,
+      amount: totalVolume,
+      value: totalVolume
     });
   }
 
@@ -196,8 +199,14 @@ const getAdminDashboard = asyncHandler(async (req, res, next) => {
   // Take top 10 for contribution chart
   const topAgentsContribution = agentPerformanceList.slice(0, 10).map(agent => ({
     name: agent.name,
+    agentName: agent.name,
     code: agent.code,
-    amount: agent.investmentVolume
+    agentCode: agent.code,
+    amount: agent.investmentVolume,
+    value: agent.investmentVolume,
+    investmentVolume: agent.investmentVolume,
+    totalInvestment: agent.investmentVolume,
+    totalVolume: agent.investmentVolume
   }));
 
   // 7) Top Investors List
@@ -224,8 +233,11 @@ const getAdminDashboard = asyncHandler(async (req, res, next) => {
 
   const investmentStatusSplit = {
     active: activeInvestmentsCount,
+    activeInvestments: activeInvestmentsCount,
     pending: pendingDepositsCount,
+    pendingDeposits: pendingDepositsCount,
     closed: closedInvestmentsCount,
+    closedInvestments: closedInvestmentsCount,
     total: activeInvestmentsCount + pendingDepositsCount + closedInvestmentsCount
   };
 
@@ -289,18 +301,46 @@ const getAdminDashboard = asyncHandler(async (req, res, next) => {
   res.status(200).json({
     success: true,
     data: {
-      banner: {
+      // Flat properties at the root of data for direct front-end consumption
+      totalInvestors: totalClientsCount,
+      totalClients: totalClientsCount,
+      totalInvestmentAmount,
+      totalInvestment: totalInvestmentAmount,
+      totalInvestments: totalInvestmentAmount,
+      totalInvestmentsAmount: totalInvestmentAmount,
+      totalRoiPaid,
+      roiPaid: totalRoiPaid,
+      totalAgents: totalAgentsCount,
+      pendingApprovals: pendingApprovalsCount,
+      activeInvestments: activeInvestmentsCount,
+      activeInvestmentsCount,
+      pendingApprovalsCount,
+
+      // Nested stats object (for backward compatibility / alternative fetch patterns)
+      stats: {
+        totalInvestors: totalClientsCount,
+        totalClients: totalClientsCount,
+        totalInvestmentAmount,
+        totalInvestment: totalInvestmentAmount,
+        totalInvestments: totalInvestmentAmount,
+        totalInvestmentsAmount: totalInvestmentAmount,
+        totalRoiPaid,
+        roiPaid: totalRoiPaid,
+        totalAgents: totalAgentsCount,
+        pendingApprovals: pendingApprovalsCount,
+        activeInvestments: activeInvestmentsCount,
         activeInvestmentsCount,
         pendingApprovalsCount,
       },
-      stats: {
-        totalInvestors: totalClientsCount,
-        totalInvestmentAmount,
-        totalRoiPaid,
-        totalAgents: totalAgentsCount,
+
+      // Nested banner object (for banner pills)
+      banner: {
+        activeInvestmentsCount,
+        pendingApprovalsCount,
+        activeInvestments: activeInvestmentsCount,
         pendingApprovals: pendingApprovalsCount,
-        activeInvestments: activeInvestmentsCount
       },
+
       segments: segmentsData,
       monthlyCharts,
       agentPerformance: agentPerformanceList,

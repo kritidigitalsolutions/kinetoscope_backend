@@ -58,9 +58,6 @@ const seedMockSegments = async (creatorId) => {
  * GET /api/super-admin/segments
  */
 const getAllSegments = asyncHandler(async (req, res, next) => {
-  // Auto-seed mock segments if none exist
-  await seedMockSegments(req.user.id);
-
   const segments = await Segment.find().sort({ createdAt: 1 }).lean();
 
   res.status(200).json({
