@@ -56,6 +56,64 @@ const payoutSchema = new mongoose.Schema(
 payoutSchema.index({ recipientId: 1 });
 payoutSchema.index({ status: 1 });
 
+payoutSchema.post('save', async function (doc) {
+  try {
+    const isClientRoi = doc.recipientType === 'Client Return (ROI)' || doc.recipientType === 'CLIENT';
+    if (!isClientRoi) return;
+
+    const User = mongoose.model('User');
+    const RoiPayout = mongoose.model('RoiPayout');
+
+    // Find client user by clientCode or _id
+    let clientUser = await User.findOne({ clientCode: doc.recipientId, role: 'client' });
+    if (!clientUser && mongoose.Types.ObjectId.isValid(doc.recipientId)) {
+      clientUser = await User.findOne({ _id: doc.recipientId, role: 'client' });
+    }
+
+    if (!clientUser) {
+      console.log(`[Payout Sync Warning] Client user not found for recipientId: ${doc.recipientId}`);
+      return;
+    }
+
+    // Parse month from payoutDate (format YYYY-MM-DD)
+    const date = new Date(doc.payoutDate);
+    if (isNaN(date.getTime())) {
+      console.log(`[Payout Sync Warning] Invalid payoutDate: ${doc.payoutDate}`);
+      return;
+    }
+
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const payoutMonth = `${months[date.getMonth()]} ${date.getFullYear()}`;
+
+    const targetStatus = doc.status === 'paid' ? 'PAID' : 'PENDING';
+
+    // Find and update or create RoiPayout
+    let roiPayout = await RoiPayout.findOne({ clientId: clientUser._id, payoutMonth });
+    if (roiPayout) {
+      roiPayout.status = targetStatus;
+      roiPayout.amount = doc.amount; // Sync amount just in case
+      if (targetStatus === 'PAID') {
+        roiPayout.processedDate = doc.paidAt || new Date();
+      } else {
+        roiPayout.processedDate = undefined;
+      }
+      await roiPayout.save();
+      console.log(`[Payout Sync] Automatically updated RoiPayout for ${clientUser.name} (${payoutMonth}) to ${targetStatus}`);
+    } else {
+      roiPayout = await RoiPayout.create({
+        clientId: clientUser._id,
+        payoutMonth,
+        amount: doc.amount,
+        status: targetStatus,
+        processedDate: targetStatus === 'PAID' ? (doc.paidAt || new Date()) : undefined
+      });
+      console.log(`[Payout Sync] Automatically created RoiPayout for ${clientUser.name} (${payoutMonth}) as ${targetStatus}`);
+    }
+  } catch (err) {
+    console.error('[Payout Sync Error]:', err.message);
+  }
+});
+
 const Payout = mongoose.model('Payout', payoutSchema);
 
 module.exports = Payout;
