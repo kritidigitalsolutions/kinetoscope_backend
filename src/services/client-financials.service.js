@@ -103,18 +103,39 @@ const getRoiTab = async (clientId) => {
  * @returns {Promise<Object>} The updated RoiPayout object
  */
 const payRoiPayout = async (clientId, payoutId) => {
-  const payout = await RoiPayout.findOne({ _id: payoutId, clientId });
-  if (!payout) {
-    throw new AppError('ROI payout record not found for this client.', 404);
-  }
+  let payout;
+  const isObjectId = mongoose.Types.ObjectId.isValid(payoutId);
 
-  if (payout.status === 'PAID') {
-    throw new AppError('ROI payout is already marked as PAID.', 400);
+  if (isObjectId) {
+    payout = await RoiPayout.findOne({ _id: payoutId, clientId });
+    if (!payout) {
+      throw new AppError('ROI payout record not found for this client.', 404);
+    }
+    if (payout.status === 'PAID') {
+      throw new AppError('ROI payout is already marked as PAID.', 400);
+    }
+    payout.status = 'PAID';
+    payout.processedDate = new Date();
+    await payout.save();
+  } else {
+    // Custom/string formatted ID (like "201"). Query raw collection directly to avoid Mongoose ObjectId cast error.
+    const clientObjectId = mongoose.Types.ObjectId.isValid(clientId) ? new mongoose.Types.ObjectId(clientId) : clientId;
+    const rawPayout = await RoiPayout.collection.findOne({ _id: payoutId, clientId: clientObjectId });
+    if (!rawPayout) {
+      throw new AppError('ROI payout record not found for this client.', 404);
+    }
+    if (rawPayout.status === 'PAID') {
+      throw new AppError('ROI payout is already marked as PAID.', 400);
+    }
+    
+    await RoiPayout.collection.updateOne(
+      { _id: payoutId, clientId: clientObjectId },
+      { $set: { status: 'PAID', processedDate: new Date() } }
+    );
+    
+    const updatedRaw = await RoiPayout.collection.findOne({ _id: payoutId, clientId: clientObjectId });
+    payout = RoiPayout.hydrate(updatedRaw);
   }
-
-  payout.status = 'PAID';
-  payout.processedDate = new Date();
-  await payout.save();
 
   return payout;
 };
