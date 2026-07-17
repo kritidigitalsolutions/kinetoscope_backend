@@ -7,12 +7,26 @@ const User = require('../../models/User.model');
 const { sendRoiPayoutNotification } = require('../../services/email.service');
 const asyncHandler = require('../../utils/asyncHandler');
 const AppError = require('../../utils/AppError');
+const { ROLES } = require('../../constants/roles');
+
+const verifyAgentClientAccess = async (clientId, agentId) => {
+  const clientUser = await User.findById(clientId);
+  if (!clientUser || clientUser.role !== ROLES.CLIENT) {
+    throw new AppError('Client not found.', 404);
+  }
+  if (!clientUser.assignedAgent || clientUser.assignedAgent.toString() !== agentId.toString()) {
+    throw new AppError('Access Denied. This client is not assigned to you.', 403);
+  }
+};
 
 /**
  * Get client investments tab data
  * GET /api/super-admin/clients/:id/investments
  */
 const getClientInvestmentsTab = asyncHandler(async (req, res, next) => {
+  if (req.user.role === ROLES.AGENT) {
+    await verifyAgentClientAccess(req.params.id, req.user.id);
+  }
   const data = await financialsService.getInvestmentsTab(req.params.id);
 
   res.status(200).json({
@@ -27,6 +41,9 @@ const getClientInvestmentsTab = asyncHandler(async (req, res, next) => {
  * GET /api/super-admin/clients/:id/roi
  */
 const getClientRoiTab = asyncHandler(async (req, res, next) => {
+  if (req.user.role === ROLES.AGENT) {
+    await verifyAgentClientAccess(req.params.id, req.user.id);
+  }
   const data = await financialsService.getRoiTab(req.params.id);
 
   res.status(200).json({
@@ -82,6 +99,9 @@ const markRoiPaid = asyncHandler(async (req, res, next) => {
  * GET /api/super-admin/clients/:id/documents
  */
 const getClientDocumentsTab = asyncHandler(async (req, res, next) => {
+  if (req.user.role === ROLES.AGENT) {
+    await verifyAgentClientAccess(req.params.id, req.user.id);
+  }
   const documentsData = await clientDetailsService.getClientDocumentsData(req.params.id);
 
   res.status(200).json({
@@ -96,6 +116,9 @@ const getClientDocumentsTab = asyncHandler(async (req, res, next) => {
  * GET /api/super-admin/clients/:id/perks
  */
 const getClientPerksTab = asyncHandler(async (req, res, next) => {
+  if (req.user.role === ROLES.AGENT) {
+    await verifyAgentClientAccess(req.params.id, req.user.id);
+  }
   const profile = await ClientProfile.findOne({ userId: req.params.id });
   if (!profile) {
     return next(new AppError('Client profile not found.', 404));

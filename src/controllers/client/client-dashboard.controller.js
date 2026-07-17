@@ -14,13 +14,17 @@ const asyncHandler = require('../../utils/asyncHandler');
  * @returns {Promise<object>} Dashboard metrics payload
  */
 const calculateDashboardData = async (userId) => {
-  const profile = await ClientProfile.findOne({ userId });
+  // 1) Batch 1: parallel fetch primary resources
+  const [profile, investments, clientUser, clientRoiPayouts] = await Promise.all([
+    ClientProfile.findOne({ userId }),
+    Investment.find({ clientId: userId }).sort({ investmentDate: -1 }).lean(),
+    User.findById(userId).populate('assignedAgent').lean(),
+    RoiPayout.find({ clientId: userId, status: 'PAID' }).sort({ processedDate: -1 }).lean()
+  ]);
+
   if (!profile) {
     throw new AppError('Client profile could not be found for the specified user.', 404);
   }
-
-  // Fetch all investments belonging to the client
-  const investments = await Investment.find({ clientId: userId }).sort({ investmentDate: -1 }).lean();
 
   // Filter out cancelled investments for the totals
   const validInvestments = investments.filter(inv => inv.status !== 'cancelled');
@@ -78,12 +82,21 @@ const calculateDashboardData = async (userId) => {
 
   const nextRoiDateFormatted = nextRoiDate ? formatDateToDDMMMYYYY(nextRoiDate) : '—';
 
-  // 1) Wealth Advisor details
-  const clientUser = await User.findById(userId).populate('assignedAgent').lean();
+  // 2) Batch 2: parallel fetch secondary resources dependent on clientCode and projects
+  const clientCode = clientUser ? clientUser.clientCode : '';
+  const projectIds = activeInvestmentsList.map(inv => inv.projectId).filter(Boolean);
+  const agentUser = clientUser && clientUser.assignedAgent ? clientUser.assignedAgent : null;
+
+  const [payoutsCount, clientPayouts, agentProfile, projectsList] = await Promise.all([
+    clientCode ? Payout.countDocuments({ recipientId: clientCode, status: 'paid' }) : Promise.resolve(0),
+    clientCode ? Payout.find({ recipientId: clientCode, recipientType: 'Client Return (ROI)' }).sort({ payoutDate: -1 }).lean() : Promise.resolve([]),
+    agentUser ? AgentProfile.findOne({ userId: agentUser._id }).lean() : Promise.resolve(null),
+    projectIds.length > 0 ? Project.find({ _id: { $in: projectIds } }).lean() : Promise.resolve([])
+  ]);
+
+  // Wealth Advisor details
   let wealthAdvisor = null;
-  if (clientUser && clientUser.assignedAgent) {
-    const agentUser = clientUser.assignedAgent;
-    const agentProfile = await AgentProfile.findOne({ userId: agentUser._id }).lean();
+  if (agentUser) {
     wealthAdvisor = {
       name: agentUser.name,
       code: agentUser.clientCode || 'AGT-007',
@@ -94,10 +107,7 @@ const calculateDashboardData = async (userId) => {
     };
   }
 
-  // 2) Live Portfolio & Segment Updates (Fetch projects details)
-  const projectIds = activeInvestmentsList.map(inv => inv.projectId).filter(Boolean);
-  const projectsList = await Project.find({ _id: { $in: projectIds } }).lean();
-  
+  // Live Portfolio
   const livePortfolio = activeInvestmentsList.map(inv => {
     const project = projectsList.find(p => String(p._id) === String(inv.projectId)) || null;
     return {
@@ -114,27 +124,24 @@ const calculateDashboardData = async (userId) => {
     };
   });
 
-  // 3) Stepper Journey Statuses
-  const clientCode = clientUser ? clientUser.clientCode : '';
-  const payoutsCount = clientCode ? await Payout.countDocuments({ recipientId: clientCode, status: 'paid' }) : 0;
-  
+  // Stepper Journey
   const steps = [
-    { step: 1, label: 'Account Created', completed: true },
-    { step: 2, label: 'Onboarding Details', completed: !!(profile.phone && profile.address) },
-    { step: 3, label: 'KYC Submitted', completed: !!(profile.panNumber && profile.aadhaarNumber) },
-    { step: 4, label: 'Agreement Signed', completed: !!profile.agreementDocument },
-    { step: 5, label: 'First Investment', completed: investments.length > 0 },
-    { step: 6, label: 'ROI Configured', completed: activeInvestmentsCount > 0 || !!profile.monthlyRoi },
-    { step: 7, label: 'First ROI Received', completed: payoutsCount > 0 }
+    { step: 1, label: 'Account Created', completed: true, isCompleted: true, status: 'completed' },
+    { step: 2, label: 'Onboarding Details', completed: !!(profile.phone && profile.address), isCompleted: !!(profile.phone && profile.address), status: (profile.phone && profile.address) ? 'completed' : 'pending' },
+    { step: 3, label: 'KYC Submitted', completed: !!(profile.panNumber && profile.aadhaarNumber), isCompleted: !!(profile.panNumber && profile.aadhaarNumber), status: (profile.panNumber && profile.aadhaarNumber) ? 'completed' : 'pending' },
+    { step: 4, label: 'Agreement Signed', completed: !!profile.agreementDocument, isCompleted: !!profile.agreementDocument, status: profile.agreementDocument ? 'completed' : 'pending' },
+    { step: 5, label: 'First Investment', completed: investments.length > 0, isCompleted: investments.length > 0, status: investments.length > 0 ? 'completed' : 'pending' },
+    { step: 6, label: 'ROI Configured', completed: activeInvestmentsCount > 0 || !!profile.monthlyRoi, isCompleted: activeInvestmentsCount > 0 || !!profile.monthlyRoi, status: (activeInvestmentsCount > 0 || !!profile.monthlyRoi) ? 'completed' : 'pending' },
+    { step: 7, label: 'First ROI Received', completed: payoutsCount > 0, isCompleted: payoutsCount > 0, status: payoutsCount > 0 ? 'completed' : 'pending' }
   ];
-  
+
   const completedCount = steps.filter(s => s.completed).length;
   const journeyPercentage = Math.round((completedCount / 7) * 100);
 
-  // 4) Complete Profile Banner visibility check
+  // Profile complete check
   const isProfileComplete = !!(profile.nomineeName && profile.riskProfile);
 
-  // 5) Asset Allocation aggregation (Pie Chart)
+  // Asset Allocation
   const segmentAllocationMap = {};
   activeInvestmentsList.forEach(inv => {
     const amt = inv.investmentAmount || 0;
@@ -160,10 +167,7 @@ const calculateDashboardData = async (userId) => {
     };
   });
 
-  // 6) Historical ROI Earnings (Bar Chart) & Payouts Feed
-  const clientPayouts = clientCode ? await Payout.find({ recipientId: clientCode, recipientType: 'Client Return (ROI)' }).sort({ payoutDate: -1 }).lean() : [];
-  const clientRoiPayouts = await RoiPayout.find({ clientId: userId, status: 'PAID' }).sort({ processedDate: -1 }).lean();
-
+  // Historical ROI
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const monthlyRoiMap = Array(12).fill(0);
 
@@ -197,29 +201,63 @@ const calculateDashboardData = async (userId) => {
   }));
 
   return {
+    // Flat root-level properties
+    totalInvestment,
+    totalInvestmentAmount: totalInvestment,
+    totalInvestments: totalInvestment,
+    activeInvestmentsCount,
+    activeProjects: activeInvestmentsCount,
+    roiRate,
+    roiPercentage: roiRate,
+    roi: roiRate,
+    roiRateAnnual: roiRate * 12,
+    annualRoiRate: roiRate * 12,
+    expectedMonthlyRoi,
+    monthlyRoi: expectedMonthlyRoi,
+    perkTier: (profile.tier || 'GOLD').toUpperCase(),
+    nextRoiDate: nextRoiDate ? nextRoiDate.toISOString().split('T')[0] : null,
+    nextRoiDateFormatted,
+    isProfileComplete,
+    profileComplete: isProfileComplete,
+    profileCompleted: isProfileComplete,
+    onboardingComplete: isProfileComplete,
+    journeyPercentage,
+    journeyProgress: journeyPercentage,
+    progress: journeyPercentage,
+
     profile: {
       ...profile.toObject(),
       clientCode: clientUser ? clientUser.clientCode : '',
     },
     investments,
-    totalInvestment,
     activeInvestments: activeInvestmentsList,
-    activeInvestmentsCount,
-    roiRate,
-    expectedMonthlyRoi,
-    perkTier: (profile.tier || 'GOLD').toUpperCase(),
-    nextRoiDate: nextRoiDate ? nextRoiDate.toISOString().split('T')[0] : null,
-    nextRoiDateFormatted,
-    isProfileComplete,
     journey: {
       percentage: journeyPercentage,
+      progress: journeyPercentage,
       steps
     },
     livePortfolio,
     assetAllocation,
     monthlyRoiEarnings,
     recentPayouts,
-    wealthAdvisor
+    wealthAdvisor,
+
+    // Nested stats object to cover all frontend fetch patterns
+    stats: {
+      totalInvestment,
+      totalInvestmentAmount: totalInvestment,
+      totalInvestments: totalInvestment,
+      activeInvestmentsCount,
+      activeProjects: activeInvestmentsCount,
+      roiRate,
+      roiPercentage: roiRate,
+      roi: roiRate,
+      roiRateAnnual: roiRate * 12,
+      annualRoiRate: roiRate * 12,
+      expectedMonthlyRoi,
+      monthlyRoi: expectedMonthlyRoi,
+      perkTier: (profile.tier || 'GOLD').toUpperCase()
+    }
   };
 };
 
@@ -479,6 +517,34 @@ const getClientPayouts = asyncHandler(async (req, res, next) => {
   });
 });
 
+const getClientWealthAdvisor = asyncHandler(async (req, res, next) => {
+  const userId = req.user.id;
+
+  const clientUser = await User.findById(userId).populate('assignedAgent').lean();
+  if (!clientUser) {
+    return next(new AppError('Client user not found', 404));
+  }
+
+  let wealthAdvisor = null;
+  if (clientUser.assignedAgent) {
+    const agentUser = clientUser.assignedAgent;
+    const agentProfile = await AgentProfile.findOne({ userId: agentUser._id }).lean();
+    wealthAdvisor = {
+      name: agentUser.name,
+      code: agentUser.clientCode || 'AGT-007',
+      phone: agentProfile ? agentProfile.phone : '',
+      email: agentUser.email || '',
+      role: 'Wealth Advisor',
+      whatsAppLink: agentProfile && agentProfile.phone ? `https://wa.me/91${agentProfile.phone.replace(/[^0-9]/g, '')}` : ''
+    };
+  }
+
+  res.status(200).json({
+    success: true,
+    data: wealthAdvisor
+  });
+});
+
 module.exports = {
   calculateDashboardData,
   getClientDashboard,
@@ -488,4 +554,5 @@ module.exports = {
   updateClientProfile,
   getClientDocuments,
   getClientPayouts,
+  getClientWealthAdvisor,
 };

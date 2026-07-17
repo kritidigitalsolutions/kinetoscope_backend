@@ -128,6 +128,7 @@ const createProject = asyncHandler(async (req, res, next) => {
     summary,
     currentUpdate,
     allocationFocus,
+    totalDividendPool,
   } = req.body;
 
   let bannerImageUrl = '';
@@ -152,6 +153,7 @@ const project = await Project.create({
     summary: summary || '',
     currentUpdate: currentUpdate || '',
     allocationFocus: allocationFocus || '',
+    totalDividendPool: totalDividendPool !== undefined ? Number(totalDividendPool) : 0,
     bannerImage: bannerImageUrl,
     createdBy: req.user.id,
   });
@@ -233,6 +235,7 @@ const updateProject = asyncHandler(async (req, res, next) => {
     'mediaFiles',
     'currentUpdate',
     'allocationFocus',
+    'totalDividendPool',
   ];
 
   allowedFields.forEach(field => {
@@ -243,6 +246,10 @@ const updateProject = asyncHandler(async (req, res, next) => {
 
   if (updates.milestoneProgress !== undefined) {
     updates.milestoneProgress = Number(updates.milestoneProgress);
+  }
+
+  if (updates.totalDividendPool !== undefined) {
+    updates.totalDividendPool = Number(updates.totalDividendPool);
   }
 
   // Handle banner image removal if explicitly set to empty or null

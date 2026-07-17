@@ -354,6 +354,16 @@ const getAllClients = asyncHandler(async (req, res, next) => {
 });
 
 const getClientById = asyncHandler(async (req, res, next) => {
+  if (req.user.role === ROLES.AGENT) {
+    const clientUser = await User.findById(req.params.id);
+    if (!clientUser || clientUser.role !== ROLES.CLIENT) {
+      return next(new AppError('Client not found.', 404));
+    }
+    if (!clientUser.assignedAgent || clientUser.assignedAgent.toString() !== req.user.id.toString()) {
+      return next(new AppError('Access Denied. This client is not assigned to you.', 403));
+    }
+  }
+
   const details = await clientDetailsService.getClientDetailsData(req.params.id);
 
   res.status(200).json({

@@ -19,6 +19,7 @@ const {
   updateClientProfile,
   getClientDocuments,
   getClientPayouts,
+  getClientWealthAdvisor,
 } = require('../../controllers/client/client-dashboard.controller');
 
 const {
@@ -83,6 +84,7 @@ router.get('/auth/me', getMe);
 
 // 2. Client Dashboard Stats
 router.get('/dashboard', getClientDashboard);
+router.get('/wealth-advisor', getClientWealthAdvisor);
 
 // 3. Client Investment Management
 router.get('/investments', getClientInvestments);

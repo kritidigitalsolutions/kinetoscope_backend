@@ -75,6 +75,11 @@ const projectSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    totalDividendPool: {
+      type: Number,
+      default: 0,
+      min: [0, 'Total dividend pool cannot be negative'],
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

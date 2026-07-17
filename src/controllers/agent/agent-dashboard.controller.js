@@ -334,6 +334,9 @@ const getAgentClients = asyncHandler(async (req, res, next) => {
     const clientInvestments = investmentsMap[clientIdStr] || [];
     const totalInvestment = clientInvestments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
     const commissionPaid = totalInvestment * (monthlySlabPct / 100) * months;
+    
+    // Parse monthlyRoi safely to cover numbers, strings, and fallbacks
+    const monthlyRoi = profile ? (parseFloat(profile.monthlyRoi) || 0) : 1.2;
 
     return {
       clientId: client.clientCode || '',
@@ -343,9 +346,22 @@ const getAgentClients = asyncHandler(async (req, res, next) => {
       phone: profile ? profile.phone : '',
       joinDate: client.createdAt,
       totalInvestment,
-      roi: profile ? profile.monthlyRoi : 1.2,
+      roi: monthlyRoi,
+      monthlyRoi,
+      monthlyRoiRate: monthlyRoi,
+      roiPercentage: monthlyRoi,
+      roiRate: monthlyRoi,
       commissionPaid: Math.round(commissionPaid),
-      status: profile ? profile.status : 'active',
+      commissionEarned: Math.round(commissionPaid),
+      commission: Math.round(commissionPaid),
+      totalCommission: Math.round(commissionPaid),
+      status: profile ? (profile.status || 'ACTIVE').toUpperCase() : 'ACTIVE',
+      isActive: client.isActive !== false,
+      perk: profile ? (profile.tier || 'GOLD').toUpperCase() : 'GOLD',
+      tier: profile ? (profile.tier || 'GOLD').toUpperCase() : 'GOLD',
+      perkTier: profile ? (profile.tier || 'GOLD').toUpperCase() : 'GOLD',
+      contractEndDate: profile ? profile.contractEndDate : '',
+      contractEnd: profile ? profile.contractEndDate : '',
       
       // Dual-compatibility nested structure
       user: {
@@ -358,8 +374,15 @@ const getAgentClients = asyncHandler(async (req, res, next) => {
       profile: {
         _id: profile ? profile._id : null,
         phone: profile ? profile.phone : '',
-        status: profile ? profile.status : 'active',
-        monthlyRoi: profile ? profile.monthlyRoi : 1.2,
+        status: profile ? (profile.status || 'ACTIVE').toUpperCase() : 'ACTIVE',
+        monthlyRoi: monthlyRoi,
+        roi: monthlyRoi,
+        roiPercentage: monthlyRoi,
+        roiRate: monthlyRoi,
+        tier: profile ? (profile.tier || 'GOLD').toUpperCase() : 'GOLD',
+        perkTier: profile ? (profile.tier || 'GOLD').toUpperCase() : 'GOLD',
+        contractEndDate: profile ? profile.contractEndDate : '',
+        contractEnd: profile ? profile.contractEndDate : '',
       },
     };
   });
@@ -526,10 +549,51 @@ const getAgentClientById = asyncHandler(async (req, res, next) => {
   const details = await clientDetailsService.getClientDetailsData(clientId);
   const documentsData = await clientDetailsService.getClientDocumentsData(clientId);
 
+  const formattedDob = details.profile.dob
+    ? (details.profile.dob instanceof Date ? details.profile.dob.toISOString().split('T')[0] : new Date(details.profile.dob).toISOString().split('T')[0])
+    : '';
+
+  const formatLongDate = (dateVal) => {
+    if (!dateVal) return '—';
+    const date = new Date(dateVal);
+    if (isNaN(date.getTime())) return '—';
+    const day = date.getDate();
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return `${day} ${months[date.getMonth()]} ${date.getFullYear()}`;
+  };
+
+  const clientProfileExtended = {
+    ...details.profile,
+    dob: formattedDob,
+    dobFormatted: formatLongDate(details.profile.dob),
+    joinDate: clientUser.createdAt ? clientUser.createdAt.toISOString().split('T')[0] : '',
+    joinDateFormatted: formatLongDate(clientUser.createdAt),
+    contractStartDate: details.profile.contractStartDate
+      ? (details.profile.contractStartDate instanceof Date ? details.profile.contractStartDate.toISOString().split('T')[0] : new Date(details.profile.contractStartDate).toISOString().split('T')[0])
+      : '',
+    contractEndDate: details.profile.contractEndDate
+      ? (details.profile.contractEndDate instanceof Date ? details.profile.contractEndDate.toISOString().split('T')[0] : new Date(details.profile.contractEndDate).toISOString().split('T')[0])
+      : '',
+    contractExtendedDate: details.profile.extendContractDate || '',
+    panCardNumber: details.profile.panNumber,
+    aadhaarCardNumber: details.profile.aadhaarNumber,
+    accountNo: details.profile.accountNumber,
+    'accountNo.': details.profile.accountNumber,
+    ifsc: details.profile.ifscCode,
+    kycStatus: documentsData.kycStatus,
+  };
+
   res.status(200).json({
     success: true,
     data: {
       ...details,
+      profile: clientProfileExtended,
+      client: clientProfileExtended,
+      // Flat properties at data root
+      ...clientProfileExtended,
       documents: documentsData.documents,
       kycStatus: documentsData.kycStatus,
       verificationStatus: documentsData.verificationStatus,

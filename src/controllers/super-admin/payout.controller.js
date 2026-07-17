@@ -292,6 +292,25 @@ const getPayouts = asyncHandler(async (req, res, next) => {
     ];
   }
 
+  if (req.user.role === 'agent') {
+    const clients = await User.find({ role: 'client', assignedAgent: req.user._id }, { _id: 1, clientCode: 1 });
+    const clientIds = clients.map(c => c._id.toString());
+    const clientCodes = clients.map(c => c.clientCode).filter(Boolean);
+    
+    const agentRecipientFilter = {
+      $or: [
+        { recipientId: { $in: clientIds } },
+        { recipientId: { $in: clientCodes } }
+      ]
+    };
+    
+    if (query.$and) {
+      query.$and.push(agentRecipientFilter);
+    } else {
+      query.$and = [agentRecipientFilter];
+    }
+  }
+
   const payouts = await Payout.find(query).sort({ payoutDate: -1, createdAt: -1 }).lean();
 
   // Populate recipient names

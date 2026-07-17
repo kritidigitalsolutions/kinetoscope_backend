@@ -3,6 +3,14 @@ const { getAdminDashboard } = require('../../controllers/super-admin/dashboard.c
 const { protect, restrictTo } = require('../../middlewares/auth.middleware');
 const { ROLES } = require('../../constants/roles');
 const {
+  recordPayout,
+  getPayouts,
+  markPayoutPaid,
+  bulkUploadPayouts,
+  clearAllPayouts,
+  deletePayout
+} = require('../../controllers/super-admin/payout.controller');
+const {
   createInvestment,
   getAllInvestments,
   getInvestmentById,
@@ -247,6 +255,15 @@ const router = express.Router();
 
 // Apply Auth and Role Guard to all Super Admin endpoints
 router.use(protect);
+
+// Shared routes accessible by both Super Admin and Agent
+router.get('/clients/:id', restrictTo(ROLES.SUPER_ADMIN, ROLES.AGENT), getClientById);
+router.get('/clients/:id/documents', restrictTo(ROLES.SUPER_ADMIN, ROLES.AGENT), getClientDocumentsTab);
+router.get('/clients/:id/investments', restrictTo(ROLES.SUPER_ADMIN, ROLES.AGENT), getClientInvestmentsTab);
+router.get('/clients/:id/roi', restrictTo(ROLES.SUPER_ADMIN, ROLES.AGENT), getClientRoiTab);
+router.get('/clients/:id/perks', restrictTo(ROLES.SUPER_ADMIN, ROLES.AGENT), getClientPerksTab);
+router.get('/roi/payouts', restrictTo(ROLES.SUPER_ADMIN, ROLES.AGENT), getPayouts);
+
 router.use(restrictTo(ROLES.SUPER_ADMIN));
 
 // 1. Dashboard Analytics
@@ -263,17 +280,12 @@ router.get('/clients/manage/export', exportClientsCSV);
 router.delete('/clients/clear', clearAllClients);
 
 router.route('/clients/:id')
-  .get(getClientById)
   .patch(memoryClientOnboardingUpload, updateClientRulesByAdmin, updateClient)
   .delete(deleteClient);
 
-router.get('/clients/:id/investments', getClientInvestmentsTab);
-router.get('/clients/:id/roi', getClientRoiTab);
 router.patch('/clients/:id/roi/:payoutId/pay', markRoiPaid);
 router.patch('/clients/:id/roi-rate', updateClientRoiRate);
-router.get('/clients/:id/documents', getClientDocumentsTab);
 router.patch('/clients/:id/verify-document', verifyDocument);
-router.get('/clients/:id/perks', getClientPerksTab);
 
 // Client dashboard preview
 router.get('/client-dashboard/:clientId', previewClientDashboard);
@@ -292,10 +304,8 @@ router.route('/investments/:id')
 router.patch('/investments/:id/extend', extendContractValidationRules, extendInvestmentContract);
 
 // 4. ROI & Payouts Management (Complete Transaction Details)
-const { recordPayout, getPayouts, markPayoutPaid, bulkUploadPayouts, clearAllPayouts, deletePayout } = require('../../controllers/super-admin/payout.controller');
 
 router.route('/roi/payouts')
-  .get(getPayouts)
   .post(recordPayout);
 
 router.delete('/roi/payouts/clear', clearAllPayouts);
