@@ -90,7 +90,6 @@ const sendChangePasswordOtpHandler = asyncHandler(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: 'OTP sent successfully to your email address. Verify to confirm the password change.',
-    otp: otp, // Temporarily returned in response body for frontend testing without checking terminal/email
   });
 });
 
