@@ -209,8 +209,8 @@ const agentProfileSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: {
-        values: ['active', 'inactive', 'suspended', 'blocked', 'hold'],
-        message: 'Status must be active, inactive, suspended, blocked, or hold',
+        values: ['active', 'inactive', 'suspended', 'blocked', 'hold', 'pending'],
+        message: 'Status must be active, inactive, suspended, blocked, hold, or pending',
       },
       default: 'active',
     },
