@@ -64,9 +64,6 @@ const sendChangePasswordOtpHandler = asyncHandler(async (req, res, next) => {
 
   // 7) Generate + hash OTP
   const otp = generateOtp();
-  console.log(`\n==================================================`);
-  console.log(`[TESTING OTP] Change-password OTP for ${user.email}: ${otp}`);
-  console.log(`==================================================\n`);
   const otpHash = await OtpRecord.hashOtp(otp);
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
 
